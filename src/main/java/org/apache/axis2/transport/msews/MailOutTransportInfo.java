@@ -17,7 +17,7 @@
  *  under the License.
  */
 
-package org.apache.axis2.transport.mail;
+package org.apache.axis2.transport.msews;
 
 import org.apache.axis2.transport.OutTransportInfo;
 
@@ -30,15 +30,25 @@ import javax.mail.internet.InternetAddress;
  */
 public class MailOutTransportInfo implements OutTransportInfo {
 
-    /** The address of the destination */
+    /**
+     * The address of the destination
+     */
     private InternetAddress[] targetAddresses = null;
-    /** The address of the service that is replying */
+    /**
+     * The address of the service that is replying
+     */
     private InternetAddress fromAddress = null;
-    /** A list of email addresses to which the reply must be copied */
+    /**
+     * A list of email addresses to which the reply must be copied
+     */
     private InternetAddress[] ccAddresses = null;
-    /** The subject for the reply message */
+    /**
+     * The subject for the reply message
+     */
     private String subject = null;
-    /** The message ID of the request message, when this refers to a reply to it */
+    /**
+     * The message ID of the request message, when this refers to a reply to it
+     */
     private String requestMessageID = null;
 
     MailOutTransportInfo(InternetAddress fromAddress) {

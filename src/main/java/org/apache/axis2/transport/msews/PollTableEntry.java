@@ -17,18 +17,12 @@
  *  under the License.
  */
 
-package org.apache.axis2.transport.mail;
+package org.apache.axis2.transport.msews;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.util.StringTokenizer;
-import java.util.Collections;
-
-import javax.mail.Session;
-import javax.mail.internet.AddressException;
-import javax.mail.internet.InternetAddress;
-
+import microsoft.exchange.webservices.data.BasePropertySet;
+import microsoft.exchange.webservices.data.EmailMessageSchema;
+import microsoft.exchange.webservices.data.PropertySet;
+import microsoft.exchange.webservices.data.WellKnownFolderName;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.addressing.EndpointReference;
 import org.apache.axis2.description.AxisService;
@@ -39,6 +33,17 @@ import org.apache.axis2.transport.base.BaseConstants;
 import org.apache.axis2.transport.base.ParamUtils;
 import org.apache.commons.logging.Log;
 
+import javax.mail.Session;
+import javax.mail.internet.AddressException;
+import javax.mail.internet.InternetAddress;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
+import java.util.StringTokenizer;
+
 /**
  * Holds information about an entry in the VFS transport poll table used by the
  * VFS Transport Listener
@@ -48,51 +53,96 @@ public class PollTableEntry extends AbstractPollTableEntry {
 
     // operation after mail check
     public static final int DELETE = 0;
-    public static final int MOVE   = 1;
+    public static final String DELETE_VALUE = "DELETE";
+    public static final int MOVE = 1;
+    public static final String MOVE_VALUE = "MOVE";
 
-    /** The email address mapped to the service */
+    /**
+     * The email address mapped to the service
+     */
     private InternetAddress emailAddress = null;
 
-    /** account username to check mail */
+    /**
+     * account username to check mail
+     */
     private String userName = null;
-    /** account password to check mail */
+    /**
+     * account password to check mail
+     */
     private String password = null;
-    /** The protocol to be used - pop3 or imap */
+    /**
+     * The protocol to be used - pop3 or imap
+     */
     private String protocol = null;
-    /** The JavaMail session used to connect to the mail store */
-    private Session session;
+    private String emailAdress;
+    private String serviceUrl;
 
-    /** The mail folder from which to check mail */
-    private String folder;
-    /** X-Service-Path custom header */
+    /**
+     * The mail folder from which to check mail
+     */
+    private WellKnownFolderName folder = WellKnownFolderName.Inbox;
+    /**
+     * X-Service-Path custom header
+     */
     // FIXME: this value of this property is never set nor retrieved
     private String xServicePath;
-    /** Content-Type to use for the message */
+    /**
+     * Content-Type to use for the message
+     */
     private String contentType;
-    /** default reply address */
+    /**
+     * default reply address
+     */
     private InternetAddress replyAddress = null;
 
-    /** list of mail headers to be preserved into the Axis2 message as transport headers */
+    /**
+     * list of mail headers to be preserved into the Axis2 message as transport headers
+     */
     private List<String> preserveHeaders = null;
-    /** list of mail headers to be removed from the Axis2 message transport headers */
+    /**
+     * list of mail headers to be removed from the Axis2 message transport headers
+     */
     private List<String> removeHeaders = null;
 
-    /** action to take after a successful poll */
+    /**
+     * action to take after a successful poll
+     */
     private int actionAfterProcess = DELETE;
-    /** action to take after a failed poll */
+    /**
+     * action to take after a failed poll
+     */
     private int actionAfterFailure = DELETE;
 
-    /** folder to move the email after processing */
+    /**
+     * folder to move the email after processing
+     */
     private String moveAfterProcess;
-    /** folder to move the email after failure */
+    /**
+     * folder to move the email after failure
+     */
     private String moveAfterFailure;
-    /** Should mail be processed in parallel? e.g. with IMAP */
+    /**
+     * Should mail be processed in parallel? e.g. with IMAP
+     */
     private boolean processingMailInParallel = false;
-    /** UIDs of messages currently being processed */
-    private List<String> uidList = Collections.synchronizedList(new ArrayList<String>());
+
+    /**
+     * Process 10 mails per mail server poll.
+     */
+    private int messageCount = 10;
+
+    // FIXME: Add Attachment Selection RegExp pattern (filename regexp)
+    private String attachmentRegExp = null;
+
+    /**
+     * UIDs of messages currently being processed
+     */
+    private Set<String> uidList = Collections.synchronizedSet(new HashSet<String>());
 
     private int maxRetryCount;
     private long reconnectTimeout;
+
+    private PropertySet ewsProperties = new PropertySet(BasePropertySet.FirstClassProperties, EmailMessageSchema.Attachments);
 
     public PollTableEntry(Log log) {
         this.log = log;
@@ -100,8 +150,8 @@ public class PollTableEntry extends AbstractPollTableEntry {
 
     @Override
     public EndpointReference[] getEndpointReferences(AxisService service, String ip) {
-        return new EndpointReference[] { new EndpointReference(MailConstants.TRANSPORT_PREFIX
-                + emailAddress) };
+        return new EndpointReference[]{new EndpointReference(MailConstants.TRANSPORT_PREFIX
+                + emailAddress)};
     }
 
     public InternetAddress getEmailAddress() {
@@ -141,14 +191,14 @@ public class PollTableEntry extends AbstractPollTableEntry {
     }
 
     public int getMaxRetryCount() {
-      return maxRetryCount;
+        return maxRetryCount;
     }
 
     public long getReconnectTimeout() {
-      return reconnectTimeout;
+        return reconnectTimeout;
     }
 
-    public String getFolder() {
+    public WellKnownFolderName getFolder() {
         return folder;
     }
 
@@ -159,16 +209,16 @@ public class PollTableEntry extends AbstractPollTableEntry {
     /**
      * Get the mail store protocol.
      * This protocol identifier is used in calls to {@link Session#getStore()}.
-     * 
+     *
      * @return the mail store protocol
      */
     public String getProtocol() {
         return protocol;
     }
 
-    public Session getSession() {
-        return session;
-    }
+//    public Session getSession() {
+//        return session;
+//    }
 
     private void addPreserveHeaders(String headerList) {
         if (headerList == null) return;
@@ -208,10 +258,22 @@ public class PollTableEntry extends AbstractPollTableEntry {
         return processingMailInParallel;
     }
 
+    public void setEmailAddress(InternetAddress emailAddress) {
+        this.emailAddress = emailAddress;
+    }
+
+    public String getServiceUrl() {
+        return serviceUrl;
+    }
+
+    public void setServiceUrl(String serviceUrl) {
+        this.serviceUrl = serviceUrl;
+    }
+
     @Override
     public boolean loadConfiguration(ParameterInclude paramIncl) throws AxisFault {
         String address =
-            ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_ADDRESS);
+                ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_ADDRESS);
         if (address == null) {
             return false;
         } else {
@@ -229,29 +291,26 @@ public class PollTableEntry extends AbstractPollTableEntry {
                     props.setProperty(p.getName(), (String) p.getValue());
                 }
 
-                if (MailConstants.MAIL_POP3_USERNAME.equals(p.getName()) ||
-                    MailConstants.MAIL_IMAP_USERNAME.equals(p.getName())) {
+                if (MailConstants.MAIL_EWS_EMAILADDRESS.equals(p.getName())) {
                     userName = (String) p.getValue();
                 }
-                if (MailConstants.MAIL_POP3_PASSWORD.equals(p.getName()) ||
-                    MailConstants.MAIL_IMAP_PASSWORD.equals(p.getName())) {
+
+                if (MailConstants.MAIL_EWS_PASSWORD.equals(p.getName())) {
                     password = (String) p.getValue();
                 }
+
                 if (MailConstants.TRANSPORT_MAIL_PROTOCOL.equals(p.getName())) {
                     protocol = (String) p.getValue();
                 }
             }
 
-            session = Session.getInstance(props, null);
-            MailUtils.setupLogging(session, log, paramIncl);
-
             contentType =
-                ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_CONTENT_TYPE);
+                    ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_CONTENT_TYPE);
             try {
-                String replyAddress = 
-                    ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_REPLY_ADDRESS);
+                String replyAddress =
+                        ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_REPLY_ADDRESS);
                 if (replyAddress != null) {
-                    this.replyAddress = new InternetAddress(replyAddress);   
+                    this.replyAddress = new InternetAddress(replyAddress);
                 }
             } catch (AddressException e) {
                 throw new AxisFault("Invalid email address specified by '" +
@@ -259,30 +318,26 @@ public class PollTableEntry extends AbstractPollTableEntry {
                         e.getMessage());
             }
 
-            folder =
-                ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_FOLDER);
+            folder = WellKnownFolderName.valueOf(ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_FOLDER));
 
             addPreserveHeaders(
-                ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_PRESERVE_HEADERS));
+                    ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_PRESERVE_HEADERS));
             addRemoveHeaders(
-                ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_REMOVE_HEADERS));
+                    ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_REMOVE_HEADERS));
 
-            String option = ParamUtils.getOptionalParam(
-                paramIncl, MailConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS);
-            actionAfterProcess =
-                MailTransportListener.MOVE.equals(option) ? PollTableEntry.MOVE : PollTableEntry.DELETE;
-            option = ParamUtils.getOptionalParam(
-                paramIncl, MailConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE);
-            actionAfterFailure =
-                MailTransportListener.MOVE.equals(option) ? PollTableEntry.MOVE : PollTableEntry.DELETE;
+            String option = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS);
+            actionAfterProcess = PollTableEntry.MOVE_VALUE.equalsIgnoreCase(option) ? PollTableEntry.MOVE : PollTableEntry.DELETE;
+
+            option = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE);
+            actionAfterFailure = PollTableEntry.MOVE_VALUE.equalsIgnoreCase(option) ? PollTableEntry.MOVE : PollTableEntry.DELETE;
 
             moveAfterProcess = ParamUtils.getOptionalParam(
-                paramIncl, MailConstants.TRANSPORT_MAIL_MOVE_AFTER_PROCESS);
+                    paramIncl, MailConstants.TRANSPORT_MAIL_MOVE_AFTER_PROCESS);
             moveAfterFailure = ParamUtils.getOptionalParam(
-                paramIncl, MailConstants.TRANSPORT_MAIL_MOVE_AFTER_FAILURE);
+                    paramIncl, MailConstants.TRANSPORT_MAIL_MOVE_AFTER_FAILURE);
 
             String processInParallel = ParamUtils.getOptionalParam(
-                paramIncl, MailConstants.TRANSPORT_MAIL_PROCESS_IN_PARALLEL);
+                    paramIncl, MailConstants.TRANSPORT_MAIL_PROCESS_IN_PARALLEL);
             if (processInParallel != null) {
                 processingMailInParallel = Boolean.parseBoolean(processInParallel);
                 if (log.isDebugEnabled() && processingMailInParallel) {
@@ -291,7 +346,7 @@ public class PollTableEntry extends AbstractPollTableEntry {
             }
 
             String pollInParallel = ParamUtils.getOptionalParam(
-                paramIncl, BaseConstants.TRANSPORT_POLL_IN_PARALLEL);
+                    paramIncl, BaseConstants.TRANSPORT_POLL_IN_PARALLEL);
             if (pollInParallel != null) {
                 setConcurrentPollingAllowed(Boolean.parseBoolean(pollInParallel));
                 if (log.isDebugEnabled() && isConcurrentPollingAllowed()) {
@@ -300,19 +355,37 @@ public class PollTableEntry extends AbstractPollTableEntry {
             }
 
             String strMaxRetryCount = ParamUtils.getOptionalParam(
-                paramIncl, MailConstants.MAX_RETRY_COUNT);
+                    paramIncl, MailConstants.MAX_RETRY_COUNT);
             if (strMaxRetryCount != null) {
                 maxRetryCount = Integer.parseInt(strMaxRetryCount);
             }
 
             String strReconnectTimeout = ParamUtils.getOptionalParam(
-                paramIncl, MailConstants.RECONNECT_TIMEOUT);
+                    paramIncl, MailConstants.RECONNECT_TIMEOUT);
             if (strReconnectTimeout != null) {
                 reconnectTimeout = Integer.parseInt(strReconnectTimeout) * 1000;
             }
 
+
+            // EWS configuration
+            emailAdress = ParamUtils.getRequiredParam(paramIncl, MailConstants.MAIL_EWS_EMAILADDRESS);
+            password = ParamUtils.getRequiredParam(paramIncl, MailConstants.MAIL_EWS_PASSWORD);
+            serviceUrl = ParamUtils.getRequiredParam(paramIncl, MailConstants.MAIL_EWS_URL);
+
+            String msgCountParamValue = ParamUtils.getOptionalParam(paramIncl, MailConstants.MAIL_EWS_MAX_MSG_COUNT);
+            // When msgCountParamValue not an integer then an exception will be thrown. Thats good! :)
+            messageCount = msgCountParamValue == null ? messageCount : Integer.parseInt(msgCountParamValue);
+
             return super.loadConfiguration(paramIncl);
         }
+    }
+
+    public int getMessageCount() {
+        return messageCount;
+    }
+
+    public PropertySet getEwsProperties() {
+        return ewsProperties;
     }
 
     public synchronized void processingUID(String uid) {

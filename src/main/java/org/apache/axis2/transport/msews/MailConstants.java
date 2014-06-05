@@ -17,7 +17,7 @@
  *  under the License.
  */
 
-package org.apache.axis2.transport.mail;
+package org.apache.axis2.transport.msews;
 
 import javax.mail.Session;
 
@@ -71,16 +71,10 @@ public class MailConstants {
     public static final String TRANSPORT_MAIL_REMOVE_HEADERS   = "transport.mail.RemoveHeaders";
 
     // POP3 and IMAP properties
-    public static final String MAIL_POP3_USERNAME = "mail.pop3.user";
-    public static final String MAIL_POP3_PASSWORD = "mail.pop3.password";
-    public static final String MAIL_IMAP_USERNAME = "mail.imap.user";
-    public static final String MAIL_IMAP_PASSWORD = "mail.imap.password";
-
-    // SMTP properties
-    public static final String MAIL_SMTP_FROM     = "mail.smtp.from";
-    public static final String MAIL_SMTP_USERNAME = "mail.smtp.user";
-    public static final String MAIL_SMTP_PASSWORD = "mail.smtp.password";
-    public static final String MAIL_SMTP_BCC      = "transport.mail.SMTPBccAddresses";
+    public static final String MAIL_EWS_EMAILADDRESS = "mail.ews.email";
+    public static final String MAIL_EWS_PASSWORD = "mail.ews.password";
+    public static final String MAIL_EWS_URL = "mail.ews.url";
+    public static final String MAIL_EWS_MAX_MSG_COUNT = "mail.ews.maxMessageCount";
 
     // transport / mail headers
     public static final String MAIL_HEADER_TO          = "To";
@@ -94,7 +88,6 @@ public class MailConstants {
     public static final String MAIL_HEADER_REFERENCES  = "References";
 
     // Custom headers
-    /** @see org.apache.axis2.transport.mail.WSMimeMessage */
     public static final String MAIL_HEADER_X_MESSAGE_ID= "X-Message-ID";
     public static final String TRANSPORT_MAIL_CUSTOM_HEADERS     = "transport.mail.custom.headers";
     
