@@ -93,6 +93,8 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
         if (cfgCtx.getProperty(BaseConstants.CALLBACK_TABLE) == null) {
             cfgCtx.setProperty(BaseConstants.CALLBACK_TABLE, new ConcurrentHashMap());
         }
+
+        log.info("Initializing Exchange WS 2013 Listener...");
     }
 
     @Override
@@ -126,8 +128,8 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
                 log.debug("Attempting to connect to EWS server (" + entry.getServiceUrl() + ") for : " + entry.getEmailAddress());
             }
 
-            if (entry.getUserName() != null && entry.getPassword() != null) {
-                ExchangeCredentials credentials = new WebCredentials(entry.getUserName(), entry.getPassword());
+            if (entry.getEmailAddress() != null && entry.getPassword() != null) {
+                ExchangeCredentials credentials = new WebCredentials(entry.getEmailAddress().getAddress(), entry.getPassword());
                 service.setCredentials(credentials);
 
                 try {
@@ -141,9 +143,9 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
 
             // Username IS the emailAddress
             if (log.isTraceEnabled()) {
-                log.trace("Performing auto discovery for EWS-user: " + entry.getUserName());
+                log.trace("Performing auto discovery for EWS-user: " + entry.getEmailAddress().getAddress());
             }
-            service.autodiscoverUrl(entry.getUserName());
+            service.autodiscoverUrl(entry.getEmailAddress().getAddress());
 
             ItemView iv = new ItemView(entry.getMessageCount());
 
@@ -427,14 +429,13 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
             }
         } else {
             if (log.isTraceEnabled()) {
-                log.trace("The mail has NO attachments");
+                log.trace("The mail has NO attachments. Using the body as message.");
             }
             if (message.getBody().getBodyType() == BodyType.HTML) {
                 throw new RuntimeException("HTML bodytypes are not supported!!");
             }
 
             // Get the body text and put that into the InputStream
-            // TODO: Make sure the body is handled.
             inputStream = new ByteArrayInputStream(message.getBody().toString().getBytes());
         }
 
