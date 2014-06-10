@@ -17,11 +17,8 @@
  *  under the License.
  */
 
-package org.apache.axis2.transport.msews;
+package nl.yenlo.transport.msews;
 
-import microsoft.exchange.webservices.data.BasePropertySet;
-import microsoft.exchange.webservices.data.EmailMessageSchema;
-import microsoft.exchange.webservices.data.PropertySet;
 import microsoft.exchange.webservices.data.WellKnownFolderName;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.addressing.EndpointReference;
@@ -31,6 +28,7 @@ import org.apache.axis2.description.ParameterInclude;
 import org.apache.axis2.transport.base.AbstractPollTableEntry;
 import org.apache.axis2.transport.base.BaseConstants;
 import org.apache.axis2.transport.base.ParamUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 
 import javax.mail.internet.AddressException;
@@ -50,11 +48,13 @@ import java.util.StringTokenizer;
 public class PollTableEntry extends AbstractPollTableEntry {
     private final Log log;
 
-    // operation after mail check
-    public static final int DELETE = 0;
-    public static final String DELETE_VALUE = "DELETE";
-    public static final int MOVE = 1;
-    public static final String MOVE_VALUE = "MOVE";
+    public enum ExtractType {BODY, ATTACHMENTS};
+    public enum ActionType {MOVE, DELETE, NOTHING};
+
+    /**
+     * When we delete something will it be forced (really deleted) or moved to trash !?
+     */
+    public enum DeleteActionType {FORCE, TRASH};
 
     /**
      * account emailAddress to check mail
@@ -64,6 +64,16 @@ public class PollTableEntry extends AbstractPollTableEntry {
      * account password to check mail
      */
     private String password = null;
+
+    /**
+     * domain of the provided account.
+     */
+    private String domain = null;
+
+    /**
+     * The service url of the EWS service.
+     * i.e.: https://ExchangeMailHost/EWS/Exchange.asmx
+     */
     private String serviceUrl;
 
     /**
@@ -88,11 +98,13 @@ public class PollTableEntry extends AbstractPollTableEntry {
     /**
      * action to take after a successful poll
      */
-    private int actionAfterProcess = DELETE;
+    private ActionType actionAfterProcess = ActionType.NOTHING;
     /**
      * action to take after a failed poll
      */
-    private int actionAfterFailure = DELETE;
+    private ActionType actionAfterFailure = ActionType.NOTHING;
+
+    private DeleteActionType deleteActionType = DeleteActionType.TRASH; // Use TrashDelete per default
 
     /**
      * folder to move the email after processing
@@ -115,12 +127,14 @@ public class PollTableEntry extends AbstractPollTableEntry {
     // FIXME: Add Attachment Selection RegExp pattern (filename regexp)
     private String attachmentRegExp = null;
 
+    private ExtractType extractType = ExtractType.BODY;
+
+
+
     /**
      * UIDs of messages currently being processed
      */
     private Set<String> uidList = Collections.synchronizedSet(new HashSet<String>());
-
-    private PropertySet ewsProperties = new PropertySet(BasePropertySet.FirstClassProperties, EmailMessageSchema.Attachments);
 
     public PollTableEntry(Log log) {
         this.log = log;
@@ -128,7 +142,7 @@ public class PollTableEntry extends AbstractPollTableEntry {
 
     @Override
     public EndpointReference[] getEndpointReferences(AxisService service, String ip) {
-        return new EndpointReference[]{new EndpointReference(MailConstants.TRANSPORT_PREFIX + emailAddress)};
+        return new EndpointReference[]{new EndpointReference("ews" + emailAddress)};
     }
 
     private void addPreserveHeaders(String headerList) {
@@ -209,11 +223,21 @@ public class PollTableEntry extends AbstractPollTableEntry {
             addPreserveHeaders(ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_PRESERVE_HEADERS));
             addRemoveHeaders(ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_REMOVE_HEADERS));
 
-            String option = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS);
-            actionAfterProcess = PollTableEntry.MOVE_VALUE.equalsIgnoreCase(option) ? PollTableEntry.MOVE : PollTableEntry.DELETE;
+            try {
+                String option = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS);
+                actionAfterProcess = ActionType.valueOf(option);
+            } catch (EnumConstantNotPresentException ecnpe) {
+                log.error("The supplied " + MailConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS + " is not supported. Please use one of the following " + StringUtils.join(ActionType.values()));
+                throw ecnpe;
+            }
 
-            option = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE);
-            actionAfterFailure = PollTableEntry.MOVE_VALUE.equalsIgnoreCase(option) ? PollTableEntry.MOVE : PollTableEntry.DELETE;
+            try {
+                String option = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE);
+                actionAfterFailure = ActionType.valueOf(option);
+            } catch (EnumConstantNotPresentException ecnpe) {
+                log.error("The supplied " + MailConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE + " is not supported. Please use one of the following " + StringUtils.join(ActionType.values()));
+                throw ecnpe;
+            }
 
             moveAfterProcess = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_MOVE_AFTER_PROCESS);
             moveAfterFailure = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_MOVE_AFTER_FAILURE);
@@ -241,6 +265,14 @@ public class PollTableEntry extends AbstractPollTableEntry {
             String msgCountParamValue = ParamUtils.getOptionalParam(paramIncl, MailConstants.MAIL_EWS_MAX_MSG_COUNT);
             // When msgCountParamValue not an integer then an exception will be thrown. Thats good! :)
             messageCount = msgCountParamValue == null ? messageCount : Integer.parseInt(msgCountParamValue);
+
+            String optionalParam = ParamUtils.getOptionalParam(paramIncl, MailConstants.TRANSPORT_MAIL_EXTRACTTYPE);
+            try {
+                extractType = ExtractType.valueOf(optionalParam);
+            } catch (EnumConstantNotPresentException ecnpe) {
+                log.error("The supplied " + MailConstants.TRANSPORT_MAIL_EXTRACTTYPE + " is not supported. Please use one of the following " + StringUtils.join(ExtractType.values()));
+                throw ecnpe;
+            }
 
             return super.loadConfiguration(paramIncl);
         }
@@ -290,11 +322,11 @@ public class PollTableEntry extends AbstractPollTableEntry {
         return removeHeaders;
     }
 
-    public int getActionAfterProcess() {
+    public ActionType getActionAfterProcess() {
         return actionAfterProcess;
     }
 
-    public int getActionAfterFailure() {
+    public ActionType getActionAfterFailure() {
         return actionAfterFailure;
     }
 
@@ -318,7 +350,15 @@ public class PollTableEntry extends AbstractPollTableEntry {
         return attachmentRegExp;
     }
 
-    public PropertySet getEwsProperties() {
-        return ewsProperties;
+    public String getDomain() {
+        return domain;
+    }
+
+    public ExtractType getExtractType() {
+        return extractType;
+    }
+
+    public DeleteActionType getDeleteActionType() {
+        return deleteActionType;
     }
 }

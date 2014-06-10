@@ -1,4 +1,4 @@
-package org.apache.axis2.transport.msews.log;
+package nl.yenlo.transport.msews.log;
 
 import microsoft.exchange.webservices.data.ITraceListener;
 import org.apache.commons.logging.Log;

@@ -17,7 +17,7 @@
  *  under the License.
  */
 
-package org.apache.axis2.transport.msews;
+package nl.yenlo.transport.msews;
 
 import org.apache.axis2.format.MessageFormatterEx;
 import org.apache.axis2.format.MessageFormatterExAdapter;

@@ -17,7 +17,7 @@
  *  under the License.
  */
 
-package org.apache.axis2.transport.msews;
+package nl.yenlo.transport.msews;
 
 import microsoft.exchange.webservices.data.AffectedTaskOccurrence;
 import microsoft.exchange.webservices.data.Attachment;
@@ -27,23 +27,18 @@ import microsoft.exchange.webservices.data.DeleteMode;
 import microsoft.exchange.webservices.data.EmailAddress;
 import microsoft.exchange.webservices.data.EmailAddressCollection;
 import microsoft.exchange.webservices.data.EmailMessage;
-import microsoft.exchange.webservices.data.ExchangeCredentials;
 import microsoft.exchange.webservices.data.ExchangeService;
-import microsoft.exchange.webservices.data.ExchangeVersion;
 import microsoft.exchange.webservices.data.FileAttachment;
-import microsoft.exchange.webservices.data.FindItemsResults;
 import microsoft.exchange.webservices.data.InternetMessageHeader;
 import microsoft.exchange.webservices.data.InternetMessageHeaderCollection;
-import microsoft.exchange.webservices.data.Item;
 import microsoft.exchange.webservices.data.ItemId;
-import microsoft.exchange.webservices.data.ItemView;
 import microsoft.exchange.webservices.data.SendCancellationsMode;
 import microsoft.exchange.webservices.data.ServiceLocalException;
-import microsoft.exchange.webservices.data.WebCredentials;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.Constants;
 import org.apache.axis2.addressing.EndpointReference;
 import org.apache.axis2.context.MessageContext;
+import org.apache.axis2.description.TransportInDescription;
 import org.apache.axis2.transport.TransportUtils;
 import org.apache.axis2.transport.base.AbstractPollingTransportListener;
 import org.apache.axis2.transport.base.BaseConstants;
@@ -51,7 +46,7 @@ import org.apache.axis2.transport.base.ManagementSupport;
 import org.apache.axis2.transport.base.event.TransportErrorListener;
 import org.apache.axis2.transport.base.event.TransportErrorSource;
 import org.apache.axis2.transport.base.event.TransportErrorSourceSupport;
-import org.apache.axis2.transport.msews.log.EWSTraceListener;
+import nl.yenlo.transport.msews.client.EwsMailClient;
 
 import javax.mail.MessagingException;
 import javax.mail.internet.AddressException;
@@ -62,10 +57,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -85,16 +80,28 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
         implements ManagementSupport, TransportErrorSource {
 
     private final TransportErrorSourceSupport tess = new TransportErrorSourceSupport(this);
+    private static String transportName = null;
 
     @Override
     protected void doInit() throws AxisFault {
         super.doInit();
+
+        // Lets find ourselves and get the name of the transport. Its used in the endpoint prefix...
+        HashMap<String, TransportInDescription> transportsIn = cfgCtx.getAxisConfiguration().getTransportsIn();
+        for (Map.Entry<String, TransportInDescription> tid : transportsIn.entrySet()) {
+            // Find ourselves... (the class)
+            if (tid.getValue().getReceiver() instanceof EWSMailTransportListener) {
+                // Found it...
+                transportName = tid.getKey();
+            }
+        }
+
         // set the synchronise callback table
         if (cfgCtx.getProperty(BaseConstants.CALLBACK_TABLE) == null) {
             cfgCtx.setProperty(BaseConstants.CALLBACK_TABLE, new ConcurrentHashMap());
         }
 
-        log.info("Initializing Exchange WS 2013 Listener...");
+        log.info("Initializing Exchange WS 2013 Listener (" + transportName + ")...");
     }
 
     @Override
@@ -119,53 +126,27 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
             log.debug("Checking mail for account : " + emailAddress);
         }
 
-        ExchangeService service = new ExchangeService(ExchangeVersion.Exchange2010_SP2);
-
-        service.setTraceListener(new EWSTraceListener(log));
-
         try {
             if (log.isDebugEnabled()) {
                 log.debug("Attempting to connect to EWS server (" + entry.getServiceUrl() + ") for : " + entry.getEmailAddress());
             }
 
+            EwsMailClient client = new EwsMailClient(log);
             if (entry.getEmailAddress() != null && entry.getPassword() != null) {
-                ExchangeCredentials credentials = new WebCredentials(entry.getEmailAddress().getAddress(), entry.getPassword());
-                service.setCredentials(credentials);
-
-                try {
-                    service.setUrl(new URI(entry.getServiceUrl()));
-                } catch (URISyntaxException use) {
-                    throw new RuntimeException("ServiceUrl appears to be in an incorrect format", use);
-                }
+                client.withLogin(entry.getEmailAddress().getAddress(), entry.getPassword(), entry.getDomain()).withServiceURL(entry.getServiceUrl()).withAutoDiscovery();
             } else {
                 throw new RuntimeException("Unable to locate username and/or password for mail login");
             }
 
-            // Username IS the emailAddress
-            if (log.isTraceEnabled()) {
-                log.trace("Performing auto discovery for EWS-user: " + entry.getEmailAddress().getAddress());
-            }
-            service.autodiscoverUrl(entry.getEmailAddress().getAddress());
+            client.withBatchSize(entry.getMessageCount()).getMailEntries();
 
-            ItemView iv = new ItemView(entry.getMessageCount());
+            client.forFolder(entry.getFolder());
 
-            if (log.isTraceEnabled()) {
-                log.trace("Finding items in the mail-folder " + entry.getFolder());
-            }
-            FindItemsResults<Item> items = service.findItems(entry.getFolder(), iv);
-
-            if (log.isTraceEnabled()) {
-                log.trace("Loading item properties");
-            }
-            service.loadPropertiesForItems(items, entry.getEwsProperties());
+            Iterator<EmailMessage> mailEntryIterator = client.getMailEntryIterator();
 
             outer:
-            for (Item item : items) {
-                // Source: http://stackoverflow.com/a/21772997
-                if (log.isTraceEnabled()) {
-                    log.trace("Loading item " + item.getId().getUniqueId() + " itself");
-                }
-                item.load(entry.getEwsProperties());
+            while (mailEntryIterator.hasNext()) {
+                final EmailMessage item = mailEntryIterator.next();
 
                 entry.processingUID(item.getId().getUniqueId());
 
@@ -174,14 +155,12 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
                 if (log.isTraceEnabled()) {
                     log.trace("Binding item " + item.getId().getUniqueId() + " to an emailMessage instance");
                 }
-                // Bind to an existing message using its unique identifier.
-                EmailMessage message = EmailMessage.bind(service, item.getId());
 
-                if (message != null) {   // Not sure whether message CAN be null
+                if (item != null) {   // Not sure whether message CAN be null
                     if (log.isTraceEnabled()) {
                         log.trace("processing the message");
                     }
-                    processMail(entry, message, onCompletion, service);
+                    processMail(entry, item, onCompletion, client);
                 } else {
                     if (log.isTraceEnabled()) {
                         log.trace("mesage is null, running onCompletion");
@@ -202,9 +181,9 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      * @param message      message to process
      * @param onCompletion the tasks to run on the completion of mail processing
      */
-    private void processMail(PollTableEntry entry, EmailMessage message, Runnable onCompletion, ExchangeService service) throws ServiceLocalException {
+    private void processMail(PollTableEntry entry, EmailMessage message, Runnable onCompletion, EwsMailClient client) throws ServiceLocalException {
 
-        MailProcessor mp = new MailProcessor(entry, message, service, onCompletion);
+        MailProcessor mp = new MailProcessor(entry, message, client, onCompletion);
         String msgId = message.getId().getUniqueId();
 
         // should messages be processed in parallel?
@@ -263,15 +242,15 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
         private PollTableEntry entry = null;
         private EmailMessage message = null;
         private String uid = null;
-        private ExchangeService service;
         private Runnable onCompletion = null;
+        private EwsMailClient client = null;
 
-        MailProcessor(PollTableEntry entry, EmailMessage message, ExchangeService service, Runnable onCompletion) {
+        MailProcessor(PollTableEntry entry, EmailMessage message, final EwsMailClient client, Runnable onCompletion) {
             this.entry = entry;
             this.message = message;
             this.onCompletion = onCompletion;
 
-            this.service = service;
+            this.client = client;
         }
 
         public void setUID(String uid) {
@@ -282,7 +261,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
 
             entry.setLastPollState(PollTableEntry.NONE);
             try {
-                processMail(message, entry);
+                processMail(message, entry, client);
                 entry.setLastPollState(PollTableEntry.SUCCSESSFUL);
                 metrics.incrementMessagesReceived();
 
@@ -298,7 +277,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
                 }
             }
             try {
-                moveOrDeleteAfterProcessing(entry, service, message);
+                moveOrDeleteAfterProcessing(entry, client, message);
             } catch (Exception e) {
                 log.error("Failed to move or delete email message", e);
                 tess.error(entry.getService(), e);
@@ -351,7 +330,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      * @throws MessagingException on error
      * @throws IOException        on error
      */
-    private void processMail(EmailMessage message, PollTableEntry entry)
+    private void processMail(EmailMessage message, PollTableEntry entry, EwsMailClient client)
             throws Exception {
 
         if (log.isDebugEnabled()) {
@@ -364,11 +343,10 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
         Map trpHeaders = getTransportHeaders(message);
 
         // set the message payload to the message context
-        InputStream inputStream;
+        InputStream inputStream = null;
 
         MessageContext msgContext = entry.createMessageContext();
 
-        // TODO: Refactor to Item class
         MailOutTransportInfo outInfo = buildOutTransportInfo(message, entry);
 
         // save out transport information
@@ -376,7 +354,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
 
         // set message context From
         if (outInfo.getFromAddress() != null) {
-            msgContext.setFrom(new EndpointReference(MailConstants.TRANSPORT_PREFIX + outInfo.getFromAddress().getAddress()));
+            msgContext.setFrom(new EndpointReference(transportName + outInfo.getFromAddress().getAddress()));
         }
 
         // save original mail message id message context MessageID
@@ -384,59 +362,57 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
 
         String contentType = null;
 
-        FileAttachment fa = null;
-        if (message.getHasAttachments()) {
-            if (log.isTraceEnabled()) {
-                log.trace("The mail has attachments");
-            }
+        // If set to process the attachments, go
+        // else, use the message body as MEssagecontext SoapEnvelope..
+        if (entry.getExtractType() == PollTableEntry.ExtractType.BODY) {
+            inputStream = client.getBodyAsInputStream(message);
+        } else {
+            // Untested code!!!
 
-            // We must have an attachment
-            // FIXME: Check against regex whether this is interesting
-            AttachmentCollection attachments = message.getAttachments();
+            FileAttachment fa = null;
+            if (message.getHasAttachments()) {
+                if (log.isTraceEnabled()) {
+                    log.trace("The mail has attachments");
+                }
 
-            inputStream = new PipedInputStream();
-            PipedOutputStream pop = new PipedOutputStream((PipedInputStream) inputStream);
+                // We must have an attachment
+                // FIXME: Check against regex whether this is interesting
+                AttachmentCollection attachments = message.getAttachments();
 
-            for (Attachment attachment : attachments) {
-                // LOG the attachment info
+                inputStream = new PipedInputStream();
+                PipedOutputStream pop = new PipedOutputStream((PipedInputStream) inputStream);
 
-                if (attachment instanceof FileAttachment) {
-                    fa = (FileAttachment) attachment;
+                for (Attachment attachment : attachments) {
+                    // LOG the attachment info
 
-                    try {
-                        // Only load the FileAttachment when its present
-                        if (fa != null) {
-                            fa.load(pop);
+                    if (attachment instanceof FileAttachment) {
+                        fa = (FileAttachment) attachment;
+
+                        try {
+                            // Only load the FileAttachment when its present
+                            if (fa != null) {
+                                fa.load(pop);
+                            }
+                        } catch (IOException ioe) {
+                            throw new RuntimeException("An error occurred loading the file attachment for message : " + message.getId());
                         }
-                    } catch (IOException ioe) {
-                        throw new RuntimeException("An error occurred loading the file attachment for message : " + message.getId());
-                    }
 
-                    contentType = fa.getContentType();
+                        contentType = fa.getContentType();
 
-                    if (log.isTraceEnabled()) {
-                        log.trace("Going to create a SOAP Envelope...");
-                    }
+                        if (log.isTraceEnabled()) {
+                            log.trace("Going to create a SOAP Envelope...");
+                        }
 
-                    //Step out of this for loop
-                    break;
-                } else {
-                    if (log.isInfoEnabled()) {
-                        log.info("An attachment of an unknown type has been discovered (type found is : " + attachment.getClass().getName() + ")");
+                        //Step out of this for loop
+                        break;
+                    } else {
+                        if (log.isInfoEnabled()) {
+                            log.info("An attachment of an unknown type has been discovered (type found is : " + attachment.getClass().getName() + ")");
+                        }
+                        // LOG strange attachment and throw away of move....
                     }
-                    // LOG strange attachment and throw away of move....
                 }
             }
-        } else {
-            if (log.isTraceEnabled()) {
-                log.trace("The mail has NO attachments. Using the body as message.");
-            }
-            if (message.getBody().getBodyType() == BodyType.HTML) {
-                throw new RuntimeException("HTML bodytypes are not supported!!");
-            }
-
-            // Get the body text and put that into the InputStream
-            inputStream = new ByteArrayInputStream(message.getBody().toString().getBytes());
         }
 
         if (log.isTraceEnabled()) {
@@ -518,7 +494,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
                 iaList.add(new InternetAddress(emailAddress.getAddress()));
             }
 
-             outInfo.setTargetAddresses((InternetAddress[]) iaList.toArray());
+            outInfo.setTargetAddresses((InternetAddress[]) iaList.toArray());
         } else if (message.getFrom() != null) {
             outInfo.setTargetAddresses(new InternetAddress[]{new InternetAddress(message.getFrom().getAddress())});
         } else {
@@ -552,19 +528,19 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      * @param entry   the PollTableEntry for the email that has been processed
      * @param message the email message to be moved or deleted
      */
-    private void moveOrDeleteAfterProcessing(final PollTableEntry entry, ExchangeService service, EmailMessage message) throws Exception {
+    private void moveOrDeleteAfterProcessing(final PollTableEntry entry, EwsMailClient client, EmailMessage message) throws Exception {
 
         String moveToFolder = null;
 
         switch (entry.getLastPollState()) {
             case PollTableEntry.SUCCSESSFUL:
-                if (entry.getActionAfterProcess() == PollTableEntry.MOVE) {
+                if (entry.getActionAfterProcess() == PollTableEntry.ActionType.MOVE) {
                     moveToFolder = entry.getMoveAfterProcess();
                 }
                 break;
 
             case PollTableEntry.FAILED:
-                if (entry.getActionAfterFailure() == PollTableEntry.MOVE) {
+                if (entry.getActionAfterFailure() == PollTableEntry.ActionType.MOVE) {
                     moveToFolder = entry.getMoveAfterFailure();
                 }
                 break;
@@ -573,14 +549,13 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
         }
 
         // We dont support MOVING at this moment....
-        if (entry.getActionAfterProcess() == PollTableEntry.MOVE) {
-            log.error("ActionAfterProcess MOVE is currently not supported !!! Message will be deleted from the folder!");
+        if (entry.getActionAfterProcess() == PollTableEntry.ActionType.MOVE) {
+            log.error("ActionAfterProcess MOVE is currently not supported !!! Message will not be touched in mailbox");
+            client.moveMessage(message, moveToFolder);
+        } else if (entry.getActionAfterProcess() == PollTableEntry.ActionType.DELETE) {
+            log.error("ActionAfterProcess DELETE is currently not supported !!! Message will not be touched in mailbox!");
+            //client.deleteMessage(message);
         }
-
-        List<ItemId> mailItems = new ArrayList<ItemId>();
-        mailItems.add(message.getId());
-
-        service.deleteItems(mailItems, DeleteMode.SoftDelete, SendCancellationsMode.SendToNone, AffectedTaskOccurrence.AllOccurrences);
 
     }
 

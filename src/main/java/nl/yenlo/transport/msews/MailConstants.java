@@ -17,58 +17,33 @@
  *  under the License.
  */
 
-package org.apache.axis2.transport.msews;
+package nl.yenlo.transport.msews;
+
+import microsoft.exchange.webservices.data.WellKnownFolderName;
 
 import javax.mail.Session;
 
 public class MailConstants {
-
-    public static final String TRANSPORT_NAME = "mailto";
-    public static final String TRANSPORT_PREFIX = "mailto:";
-    
-    public static final String TEXT_PLAIN = "text/plain";
-    public static final String APPLICATION_BINARY = "application/binary";
-
-    public static String DEFAULT_FOLDER = "INBOX";
-    public static final String MAIL_POP3 = "pop3";
-    public static final String MAIL_IMAP = "imap";
+    public static WellKnownFolderName DEFAULT_FOLDER = WellKnownFolderName.Inbox;
 
     public static final String TRANSPORT_MAIL_ACTION_AFTER_PROCESS = "transport.mail.ActionAfterProcess";
     public static final String TRANSPORT_MAIL_ACTION_AFTER_FAILURE = "transport.mail.ActionAfterFailure";
+    public static final String TRANSPORT_MAIL_DELETE_ACTION_TYPE = "transport.mail.DeleteActionType";
 
     public static final String TRANSPORT_MAIL_MOVE_AFTER_PROCESS = "transport.mail.MoveAfterProcess";
     public static final String TRANSPORT_MAIL_MOVE_AFTER_FAILURE = "transport.mail.MoveAfterFailure";
 
     public static final String TRANSPORT_MAIL_PROCESS_IN_PARALLEL = "transport.mail.ProcessInParallel";
 
-    public static final String MAX_RETRY_COUNT   = "transport.mail.MaxRetryCount";
-    public static final String RECONNECT_TIMEOUT = "transport.mail.ReconnectTimeout";
-
-    public static final int    DEFAULT_MAX_RETRY_COUNT    = 3;
-    public static final long   DEFAULT_RECONNECT_TIMEOUT = 30000;
-
     public static final String TRANSPORT_MAIL_ADDRESS  = "transport.mail.Address";
     
     public static final String TRANSPORT_MAIL_DEBUG = "transport.mail.Debug";
     
-    /**
-     * Key for the mail store protocol parameter.
-     * The mail store protocol identifier is used in calls to {@link Session#getStore()}.
-     */
-    public static final String TRANSPORT_MAIL_PROTOCOL = "transport.mail.Protocol";
-
-    public static final String TRANSPORT_MAIL_FORMAT = "transport.mail.Format";
-    public static final String TRANSPORT_FORMAT_TEXT = "Text";
-    public static final String TRANSPORT_FORMAT_MP   = "Multipart";
-    public static final String TRANSPORT_FORMAT_ATTACHMENT   = "Attachment";
-    public static final String TRANSPORT_FORMAT_ATTACHMENT_FILE   = "AttachmentFile";
-
     public static final String TRANSPORT_MAIL_FOLDER           = "transport.mail.Folder";
-    public static final String TRANSPORT_MAIL_CONTENT_TYPE     = "transport.mail.ContentType";
     public static final String TRANSPORT_MAIL_REPLY_ADDRESS    = "transport.mail.ReplyAddress";
-
     public static final String TRANSPORT_MAIL_PRESERVE_HEADERS = "transport.mail.PreserveHeaders";
     public static final String TRANSPORT_MAIL_REMOVE_HEADERS   = "transport.mail.RemoveHeaders";
+    public static final String TRANSPORT_MAIL_EXTRACTTYPE = "transport.mail.ExtractType";
 
     // POP3 and IMAP properties
     public static final String MAIL_EWS_EMAILADDRESS = "mail.ews.email";
@@ -88,7 +63,6 @@ public class MailConstants {
     public static final String MAIL_HEADER_REFERENCES  = "References";
 
     // Custom headers
-    public static final String MAIL_HEADER_X_MESSAGE_ID= "X-Message-ID";
     public static final String TRANSPORT_MAIL_CUSTOM_HEADERS     = "transport.mail.custom.headers";
     
 }
