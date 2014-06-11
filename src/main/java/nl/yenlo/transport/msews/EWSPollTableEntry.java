@@ -26,6 +26,7 @@ import org.apache.axis2.AxisFault;
 import org.apache.axis2.addressing.EndpointReference;
 import org.apache.axis2.description.AxisService;
 import org.apache.axis2.description.ParameterInclude;
+import org.apache.axis2.description.TransportInDescription;
 import org.apache.axis2.transport.base.AbstractPollTableEntry;
 import org.apache.axis2.transport.base.BaseConstants;
 import org.apache.axis2.transport.base.ParamUtils;
@@ -85,7 +86,8 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
         /**
          * Do nothing. leave the mail be.
          */
-        NOTHING}
+        NOTHING
+    }
 
 
     /**
@@ -230,93 +232,117 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
     @Override
     public boolean loadConfiguration(ParameterInclude paramIncl) throws AxisFault {
 
-        String address = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_EMAILADDRESS);
-        try {
-            emailAddress = new InternetAddress(address);
-        } catch (AddressException e) {
-            throw new AxisFault("Invalid email address specified by '" + EWSTransportConstants.MAIL_EWS_EMAILADDRESS + "' parameter :: " + e.getMessage());
-        }
+        if (paramIncl instanceof TransportInDescription) {
+            // This is called when the transport is first initialized (at server start)...
+            // We dont initialize the transport at this stage...
+            return false;
+        } else {
 
-        password = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_PASSWORD);
-
-        try {
-            String replyAddress = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_REPLY_ADDRESS);
-            if (replyAddress != null) {
-                this.replyAddress = new InternetAddress(replyAddress);
+            String address = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_EMAILADDRESS);
+            try {
+                emailAddress = new InternetAddress(address);
+            } catch (AddressException e) {
+                throw new AxisFault("Invalid email address specified by '" + EWSTransportConstants.MAIL_EWS_EMAILADDRESS + "' parameter :: " + e.getMessage());
             }
-        } catch (AddressException e) {
-            throw new AxisFault("Invalid email address specified by '" + EWSTransportConstants.TRANSPORT_MAIL_REPLY_ADDRESS + "' parameter :: " + e.getMessage());
-        }
 
-        String transportFolderNameValue = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_FOLDER);
-        try {
-            folder = new FolderId(transportFolderNameValue);
-        } catch (Exception e) {
-            throw new EwsMailClientConfigException("The " + EWSTransportConstants.MAIL_EWS_FOLDER + " parameters is either not found or null", e);
-        }
+            password = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_PASSWORD);
 
-        addPreserveHeaders(ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_PRESERVE_HEADERS));
-        addRemoveHeaders(ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_REMOVE_HEADERS));
-
-        try {
-            String option = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS);
-            actionAfterProcess = ActionType.valueOf(option);
-        } catch (EnumConstantNotPresentException ecnpe) {
-            log.error("The supplied " + EWSTransportConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS + " is not supported. Please use one of the following " + StringUtils.join(ActionType.values()));
-            throw ecnpe;
-        }
-
-        try {
-            String option = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE);
-            actionAfterFailure = ActionType.valueOf(option);
-        } catch (EnumConstantNotPresentException ecnpe) {
-            log.error("The supplied " + EWSTransportConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE + " is not supported. Please use one of the following " + StringUtils.join(ActionType.values()));
-            throw ecnpe;
-        }
-
-        moveAfterProcess = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_MOVE_AFTER_PROCESS);
-        moveAfterFailure = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_MOVE_AFTER_FAILURE);
-
-        String processInParallel = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_PROCESS_IN_PARALLEL);
-        if (processInParallel != null) {
-            processingMailInParallel = Boolean.parseBoolean(processInParallel);
-            if (log.isDebugEnabled() && processingMailInParallel) {
-                log.debug("Parallel mail processing enabled for : " + address);
+            try {
+                String replyAddress = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_REPLY_ADDRESS);
+                if (replyAddress != null) {
+                    this.replyAddress = new InternetAddress(replyAddress);
+                }
+            } catch (AddressException e) {
+                throw new AxisFault("Invalid email address specified by '" + EWSTransportConstants.TRANSPORT_MAIL_REPLY_ADDRESS + "' parameter :: " + e.getMessage());
             }
-        }
 
-        String pollInParallel = ParamUtils.getOptionalParam(paramIncl, BaseConstants.TRANSPORT_POLL_IN_PARALLEL);
-        if (pollInParallel != null) {
-            setConcurrentPollingAllowed(Boolean.parseBoolean(pollInParallel));
-            if (log.isDebugEnabled() && isConcurrentPollingAllowed()) {
-                log.debug("Concurrent mail polling enabled for : " + address);
+            String transportFolderNameValue = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_FOLDER);
+            try {
+                if (transportFolderNameValue != null) {
+                    // Test if the supplied transportFolderName is a WellknownFolderName, use it if so..
+                    try {
+                        folder = new FolderId(WellKnownFolderName.valueOf(transportFolderNameValue));
+                    } catch (EnumConstantNotPresentException ecnpe) {
+                        // OK, no known name.. FolderId must be UniqueId
+                        folder = new FolderId(transportFolderNameValue);
+                    }
+                }
+            } catch (Exception e) {
+                throw new EwsMailClientConfigException("The " + EWSTransportConstants.MAIL_EWS_FOLDER + " parameters is either not found or null", e);
             }
+
+            // EWS configuration
+            password = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_PASSWORD);
+            serviceUrl = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_URL);
+            domain = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_DOMAIN);
+
+            addPreserveHeaders(ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_PRESERVE_HEADERS));
+            addRemoveHeaders(ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_REMOVE_HEADERS));
+
+            try {
+                String option = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS);
+                if (option != null) {
+                    actionAfterProcess = ActionType.valueOf(option);
+                }
+            } catch (EnumConstantNotPresentException ecnpe) {
+                log.error("The supplied " + EWSTransportConstants.TRANSPORT_MAIL_ACTION_AFTER_PROCESS + " is not supported. Please use one of the following " + StringUtils.join(ActionType.values()));
+                throw ecnpe;
+            }
+
+            try {
+                String option = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE);
+                if (option != null) {
+                    actionAfterFailure = ActionType.valueOf(option);
+                }
+            } catch (EnumConstantNotPresentException ecnpe) {
+                log.error("The supplied " + EWSTransportConstants.TRANSPORT_MAIL_ACTION_AFTER_FAILURE + " is not supported. Please use one of the following " + StringUtils.join(ActionType.values()));
+                throw ecnpe;
+            }
+
+            moveAfterProcess = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_MOVE_AFTER_PROCESS);
+            moveAfterFailure = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_MOVE_AFTER_FAILURE);
+
+            String processInParallel = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_PROCESS_IN_PARALLEL);
+            if (processInParallel != null) {
+                processingMailInParallel = Boolean.parseBoolean(processInParallel);
+                if (log.isDebugEnabled() && processingMailInParallel) {
+                    log.debug("Parallel mail processing enabled for : " + address);
+                }
+            }
+
+            String pollInParallel = ParamUtils.getOptionalParam(paramIncl, BaseConstants.TRANSPORT_POLL_IN_PARALLEL);
+            if (pollInParallel != null) {
+                setConcurrentPollingAllowed(Boolean.parseBoolean(pollInParallel));
+                if (log.isDebugEnabled() && isConcurrentPollingAllowed()) {
+                    log.debug("Concurrent mail polling enabled for : " + address);
+                }
+            }
+
+            String msgCountParamValue = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_MAX_MSG_COUNT);
+            // When msgCountParamValue not an integer then an exception will be thrown. Thats good! :)
+            messageCount = msgCountParamValue == null ? messageCount : Integer.parseInt(msgCountParamValue);
+
+            String optionalParam = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_EXTRACTTYPE);
+            try {
+                if (optionalParam != null) {
+                    extractType = ExtractType.valueOf(optionalParam);
+                }
+            } catch (EnumConstantNotPresentException ecnpe) {
+                log.error("The supplied " + EWSTransportConstants.TRANSPORT_MAIL_EXTRACTTYPE + " is not supported. Please use one of the following " + StringUtils.join(ExtractType.values()));
+                throw ecnpe;
+            }
+
+            optionalParam = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_DELETETYPE);
+            try {
+                if (optionalParam != null) {
+                    deleteActionType = DeleteActionType.valueOf(optionalParam);
+                }
+            } catch (EnumConstantNotPresentException ecnpe) {
+                log.error("The supplied " + EWSTransportConstants.TRANSPORT_MAIL_DELETETYPE + " is not supported. Please use one of the following " + StringUtils.join(DeleteActionType.values()));
+                throw ecnpe;
+            }
+
         }
-
-        // EWS configuration
-        password = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_PASSWORD);
-        serviceUrl = ParamUtils.getRequiredParam(paramIncl, EWSTransportConstants.MAIL_EWS_URL);
-
-        String msgCountParamValue = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_MAX_MSG_COUNT);
-        // When msgCountParamValue not an integer then an exception will be thrown. Thats good! :)
-        messageCount = msgCountParamValue == null ? messageCount : Integer.parseInt(msgCountParamValue);
-
-        String optionalParam = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_EXTRACTTYPE);
-        try {
-            extractType = ExtractType.valueOf(optionalParam);
-        } catch (EnumConstantNotPresentException ecnpe) {
-            log.error("The supplied " + EWSTransportConstants.TRANSPORT_MAIL_EXTRACTTYPE + " is not supported. Please use one of the following " + StringUtils.join(ExtractType.values()));
-            throw ecnpe;
-        }
-
-        optionalParam = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.TRANSPORT_MAIL_DELETETYPE);
-        try {
-            deleteActionType = DeleteActionType.valueOf(optionalParam);
-        } catch (EnumConstantNotPresentException ecnpe) {
-            log.error("The supplied " + EWSTransportConstants.TRANSPORT_MAIL_DELETETYPE + " is not supported. Please use one of the following " + StringUtils.join(DeleteActionType.values()));
-            throw ecnpe;
-        }
-
         return super.loadConfiguration(paramIncl);
     }
 

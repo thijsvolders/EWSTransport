@@ -50,6 +50,7 @@ public class EWSTransportConstants {
     public static final String MAIL_EWS_EMAILADDRESS = "transport.ews.email";
     public static final String MAIL_EWS_PASSWORD = "transport.ews.password";
     public static final String MAIL_EWS_URL = "transport.ews.url";
+    public static final String MAIL_EWS_DOMAIN = "transport.ews.domain";
     public static final String MAIL_EWS_MAX_MSG_COUNT = "transport.ews.maxMessageCount";
     public static final String MAIL_EWS_FOLDER = "transport.ews.folder";
 

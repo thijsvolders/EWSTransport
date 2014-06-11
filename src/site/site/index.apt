@@ -14,6 +14,15 @@ Exchange Web Services Axis2 Transport
 
 * Usage
 
+** Installation
+
+     Copy the axis2-transport-ews2013-${project.version}.jar into [WSO2_HOME]/repository/components/dropins
+
+     A couple of dependent libs are necessary as well:
+
+     - EWSJavaAPI_v1.2.jar ( this is located in src/libs )
+
+
 ** Configuration
 
     Axis2 transports are configured in the axis2.xml.
@@ -23,6 +32,8 @@ Exchange Web Services Axis2 Transport
     <transportReceiver name="ews" class="nl.yenlo.transport.msews.EWSMailTransportListener">
     </transportReceiver>
     ---
+
+
 
 
 ** Proxy
@@ -35,12 +46,13 @@ Exchange Web Services Axis2 Transport
     *-------------------*----------------------------------------------------*-----------*---------------------------------------------------------------------------------------------------*
     ||Required/Optional || Parametername                                     || Type     || Description                                                                                      |
     *-------------------*----------------------------------------------------*-----------*---------------------------------------------------------------------------------------------------*
-    | Required          | transport.ews.email (required)                     | text      | The email address of the mailbox (a.k.a the username)                                             |
-    | Required          | transport.ews.password (required)                  | text      | The password to open te mailbox                                                                   |
-    | Required          | transport.ews.url (required)                       | text      | The url to the EWS service. i.e. https://ExchangeMailHost/EWS/Exchange.asmx                       |
-    | Required          | transport.ews.folder (required)                    | text      | A folder name to get the mails from                                                               |
-    | Optional          | transport.PollInterval (optional)                  | number    | The polling interval in millis                                                                    |
-    | Optional          | transport.ConcurrentPollingAllowed (optional)      | boolean   | Can polling occur in parallel?                                                                    |
+    | Required          | transport.ews.email                                | text      | The email address of the mailbox (a.k.a the username)                                             |
+    | Required          | transport.ews.password                             | text      | The password to open te mailbox                                                                   |
+    | Required          | transport.ews.url                                  | text      | The url to the EWS service. i.e. https://ExchangeMailHost/EWS/Exchange.asmx                       |
+    | Required          | transport.ews.domain                               | text      | The domain of the user account                                                                    |
+    | Optional          | transport.ews.folder                               | text      | A folder name to get the mails from (default: Inbox)                                              |
+    | Optional          | transport.PollInterval                             | number    | The polling interval in millis                                                                    |
+    | Optional          | transport.ConcurrentPollingAllowed                 | boolean   | Can polling occur in parallel?                                                                    |
     | Optional          | transport.ews.ActionAfterProcess                   | enum      | What to do with the mail after processing (MOVE, DELETE, NOTHING, MARKASREAD (Default))           |
     | Optional          | transport.ews.ActionAfterFailure                   | enum      | What to do with the mail after failed procesing (MOVE, DELETE, MARKASREAD, NOTHING (Default))     |
     | Optional          | transport.ews.MoveAfterProcess                     | text      | To which folder should the mail be moved (if ActionAfterProcess/ActionAfterFail is set to MOVE!)  |

@@ -133,7 +133,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
                 throw new RuntimeException("Unable to locate username and/or password for mail login");
             }
 
-            client.withBatchSize(entry.getMessageCount()).getMailEntries();
+            client.withBatchSize(entry.getMessageCount());
 
             client.forFolder(entry.getFolder());
 
@@ -483,14 +483,18 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
 
         // determine reply address
         EmailAddressCollection replyTo = message.getReplyTo();
-        if (replyTo != null) {
+        if (replyTo != null && replyTo.getCount() > 0) {
+            // Use the replyTo
+
             final List<InternetAddress> iaList = new ArrayList<InternetAddress>(replyTo.getCount());
 
             for (EmailAddress emailAddress : replyTo) {
                 iaList.add(new InternetAddress(emailAddress.getAddress()));
             }
 
+
             outInfo.setTargetAddresses((InternetAddress[]) iaList.toArray());
+
         } else if (message.getFrom() != null) {
             outInfo.setTargetAddresses(new InternetAddress[]{new InternetAddress(message.getFrom().getAddress())});
         } else {
@@ -533,29 +537,39 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
                 if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MOVE) {
                     moveToFolder = entry.getMoveAfterProcess();
                 }
+
+                if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MOVE) {
+                    log.error("ActionAfterProcess MOVE is currently not supported !!! Message will not be touched in mailbox");
+                    client.moveMessage(message, moveToFolder);
+                } else if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.DELETE) {
+                    log.error("ActionAfterProcess DELETE is currently not supported !!! Message will not be touched in mailbox!");
+                    client.deleteMessage(message, entry.getDeleteActionType());
+                } else if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MARKASREAD) {
+                    log.debug("ActionAfterProcess MARKASREAD. Marking message as read.");
+                    client.markAsRead(message);
+                }
                 break;
 
             case EWSPollTableEntry.FAILED:
                 if (entry.getActionAfterFailure() == EWSPollTableEntry.ActionType.MOVE) {
                     moveToFolder = entry.getMoveAfterFailure();
                 }
+
+                if (entry.getActionAfterFailure() == EWSPollTableEntry.ActionType.MOVE) {
+                    log.error("ActionAfterProcess MOVE is currently not supported !!! Message will not be touched in mailbox");
+                    client.moveMessage(message, moveToFolder);
+                } else if (entry.getActionAfterFailure() == EWSPollTableEntry.ActionType.DELETE) {
+                    log.error("ActionAfterProcess DELETE is currently not supported !!! Message will not be touched in mailbox!");
+                    client.deleteMessage(message, entry.getDeleteActionType());
+                } else if (entry.getActionAfterFailure() == EWSPollTableEntry.ActionType.MARKASREAD) {
+                    log.debug("ActionAfterProcess MARKASREAD. Marking message as read.");
+                    client.markAsRead(message);
+                }
+
                 break;
             case EWSPollTableEntry.NONE:
                 return;
         }
-
-        // We dont support MOVING at this moment....
-        if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MOVE) {
-            log.error("ActionAfterProcess MOVE is currently not supported !!! Message will not be touched in mailbox");
-            client.moveMessage(message, moveToFolder);
-        } else if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.DELETE) {
-            log.error("ActionAfterProcess DELETE is currently not supported !!! Message will not be touched in mailbox!");
-            client.deleteMessage(message, entry.getDeleteActionType());
-        } else if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MARKASREAD) {
-            log.debug("ActionAfterProcess MARKASREAD. Marking message as read.");
-            client.markAsRead(message);
-        }
-
     }
 
     @Override
