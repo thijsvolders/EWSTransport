@@ -18,11 +18,6 @@ Exchange Web Services Axis2 Transport
 
      Copy the axis2-transport-ews2013-${project.version}.jar into [WSO2_HOME]/repository/components/dropins
 
-     A couple of dependent libs are necessary as well:
-
-     - EWSJavaAPI_v1.2.jar ( this is located in src/libs )
-
-
 ** Configuration
 
     Axis2 transports are configured in the axis2.xml.
