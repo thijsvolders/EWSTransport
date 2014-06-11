@@ -19,21 +19,18 @@
 
 package nl.yenlo.transport.msews;
 
-import microsoft.exchange.webservices.data.AffectedTaskOccurrence;
 import microsoft.exchange.webservices.data.Attachment;
 import microsoft.exchange.webservices.data.AttachmentCollection;
-import microsoft.exchange.webservices.data.BodyType;
-import microsoft.exchange.webservices.data.DeleteMode;
 import microsoft.exchange.webservices.data.EmailAddress;
 import microsoft.exchange.webservices.data.EmailAddressCollection;
 import microsoft.exchange.webservices.data.EmailMessage;
-import microsoft.exchange.webservices.data.ExchangeService;
+import microsoft.exchange.webservices.data.EmailMessageSchema;
 import microsoft.exchange.webservices.data.FileAttachment;
 import microsoft.exchange.webservices.data.InternetMessageHeader;
 import microsoft.exchange.webservices.data.InternetMessageHeaderCollection;
-import microsoft.exchange.webservices.data.ItemId;
-import microsoft.exchange.webservices.data.SendCancellationsMode;
+import microsoft.exchange.webservices.data.SearchFilter;
 import microsoft.exchange.webservices.data.ServiceLocalException;
+import nl.yenlo.transport.msews.client.EwsMailClient;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.Constants;
 import org.apache.axis2.addressing.EndpointReference;
@@ -46,13 +43,11 @@ import org.apache.axis2.transport.base.ManagementSupport;
 import org.apache.axis2.transport.base.event.TransportErrorListener;
 import org.apache.axis2.transport.base.event.TransportErrorSource;
 import org.apache.axis2.transport.base.event.TransportErrorSourceSupport;
-import nl.yenlo.transport.msews.client.EwsMailClient;
 
 import javax.mail.MessagingException;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.xml.stream.XMLStreamException;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PipedInputStream;
@@ -76,7 +71,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * SEEN and DELETED
  */
 
-public class EWSMailTransportListener extends AbstractPollingTransportListener<PollTableEntry>
+public class EWSMailTransportListener extends AbstractPollingTransportListener<EWSPollTableEntry>
         implements ManagementSupport, TransportErrorSource {
 
     private final TransportErrorSourceSupport tess = new TransportErrorSourceSupport(this);
@@ -105,7 +100,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
     }
 
     @Override
-    protected void poll(PollTableEntry entry) {
+    protected void poll(EWSPollTableEntry entry) {
         try {
             checkMail(entry, entry.getEmailAddress());
         } catch (Exception e) {
@@ -120,7 +115,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      * @param entry        the poll table entry that stores service specific informaiton
      * @param emailAddress the email address checked
      */
-    private void checkMail(final PollTableEntry entry, InternetAddress emailAddress) {
+    private void checkMail(final EWSPollTableEntry entry, InternetAddress emailAddress) {
 
         if (log.isDebugEnabled()) {
             log.debug("Checking mail for account : " + emailAddress);
@@ -141,6 +136,9 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
             client.withBatchSize(entry.getMessageCount()).getMailEntries();
 
             client.forFolder(entry.getFolder());
+
+            // Get the unread mails only.
+            client.withSearchFilter(new SearchFilter.IsEqualTo(EmailMessageSchema.IsRead, false));
 
             Iterator<EmailMessage> mailEntryIterator = client.getMailEntryIterator();
 
@@ -181,17 +179,16 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      * @param message      message to process
      * @param onCompletion the tasks to run on the completion of mail processing
      */
-    private void processMail(PollTableEntry entry, EmailMessage message, Runnable onCompletion, EwsMailClient client) throws ServiceLocalException {
+    private void processMail(EWSPollTableEntry entry, EmailMessage message, Runnable onCompletion, EwsMailClient client) throws ServiceLocalException {
 
         MailProcessor mp = new MailProcessor(entry, message, client, onCompletion);
         String msgId = message.getId().getUniqueId();
 
+        // try to locate the UID of the message
+        String uid = getMessageUID(message);
+
         // should messages be processed in parallel?
         if (entry.isConcurrentPollingAllowed()) {
-
-            // try to locate the UID of the message
-            String uid = getMessageUID(message);
-
             if (uid != null) {
                 if (entry.isProcessingUID(uid)) {
                     if (log.isDebugEnabled()) {
@@ -199,38 +196,36 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
                     }
                 } else {
                     mp.setUID(uid);
-
-                    if (entry.isProcessingMailInParallel()) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("Processing message # : " + msgId + " with UID : " + uid + " with a worker thread");
-                        }
-                        workerPool.execute(mp);
-                    } else {
-                        if (log.isDebugEnabled()) {
-                            log.debug("Processing message # : " + msgId + " with UID : " + uid + " in same thread");
-                        }
-                        mp.run();
-                    }
                 }
             } else {
                 log.warn("Cannot process mail in parallel as the " + "folder does not support UIDs. Processing message # : " + msgId + " in the same thread");
                 entry.setConcurrentPollingAllowed(false);
-                mp.run();
+                entry.setProcessingMailInParallel(false);
             }
+        }
 
-        } else {
-            if (entry.isProcessingMailInParallel()) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Processing message # : " + msgId +
-                            " with a worker thread");
-                }
-                workerPool.execute(mp);
-            } else {
-                if (log.isDebugEnabled()) {
-                    log.debug("Processing message # : " + msgId + " in same thread");
-                }
-                mp.run();
+        executeMailProcessor(entry.isProcessingMailInParallel(), mp, msgId, uid);
+    }
+
+    /**
+     * Start the mailprocessor. Depending on the entry isProcessingMailInParallel the processor will either directly be invoked or added ot the workerPool
+     *
+     * @param inParallel can we execute the mailProcessor in parallel?
+     * @param mp
+     * @param msgId
+     * @param uid
+     */
+    private void executeMailProcessor(boolean inParallel, MailProcessor mp, String msgId, String uid) {
+        if (inParallel) {
+            if (log.isDebugEnabled()) {
+                log.debug("Processing message # : " + msgId + " with UID : " + uid + " with a worker thread");
             }
+            workerPool.execute(mp);
+        } else {
+            if (log.isDebugEnabled()) {
+                log.debug("Processing message # : " + msgId + " with UID : " + uid + " in same thread");
+            }
+            mp.run();
         }
     }
 
@@ -239,13 +234,13 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      */
     private class MailProcessor implements Runnable {
 
-        private PollTableEntry entry = null;
+        private EWSPollTableEntry entry = null;
         private EmailMessage message = null;
         private String uid = null;
         private Runnable onCompletion = null;
         private EwsMailClient client = null;
 
-        MailProcessor(PollTableEntry entry, EmailMessage message, final EwsMailClient client, Runnable onCompletion) {
+        MailProcessor(EWSPollTableEntry entry, EmailMessage message, final EwsMailClient client, Runnable onCompletion) {
             this.entry = entry;
             this.message = message;
             this.onCompletion = onCompletion;
@@ -259,15 +254,15 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
 
         public void run() {
 
-            entry.setLastPollState(PollTableEntry.NONE);
+            entry.setLastPollState(EWSPollTableEntry.NONE);
             try {
                 processMail(message, entry, client);
-                entry.setLastPollState(PollTableEntry.SUCCSESSFUL);
+                entry.setLastPollState(EWSPollTableEntry.SUCCSESSFUL);
                 metrics.incrementMessagesReceived();
 
             } catch (Exception e) {
                 log.error("Failed to process message", e);
-                entry.setLastPollState(PollTableEntry.FAILED);
+                entry.setLastPollState(EWSPollTableEntry.FAILED);
                 metrics.incrementFaultsReceiving();
                 tess.error(entry.getService(), e);
 
@@ -294,10 +289,10 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      */
     private class MailCheckCompletionTask implements Runnable {
         private final InternetAddress emailAddress;
-        private final PollTableEntry entry;
+        private final EWSPollTableEntry entry;
         private boolean taskStarted = false;
 
-        public MailCheckCompletionTask(InternetAddress emailAddress, PollTableEntry entry) {
+        public MailCheckCompletionTask(InternetAddress emailAddress, EWSPollTableEntry entry) {
             this.emailAddress = emailAddress;
             this.entry = entry;
         }
@@ -330,7 +325,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      * @throws MessagingException on error
      * @throws IOException        on error
      */
-    private void processMail(EmailMessage message, PollTableEntry entry, EwsMailClient client)
+    private void processMail(EmailMessage message, EWSPollTableEntry entry, EwsMailClient client)
             throws Exception {
 
         if (log.isDebugEnabled()) {
@@ -364,8 +359,9 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
 
         // If set to process the attachments, go
         // else, use the message body as MEssagecontext SoapEnvelope..
-        if (entry.getExtractType() == PollTableEntry.ExtractType.BODY) {
+        if (entry.getExtractType() == EWSPollTableEntry.ExtractType.BODY) {
             inputStream = client.getBodyAsInputStream(message);
+            contentType = client.getBodyContentType(message);
         } else {
             // Untested code!!!
 
@@ -482,7 +478,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
     }
 
     private MailOutTransportInfo buildOutTransportInfo(EmailMessage message,
-                                                       PollTableEntry entry) throws ServiceLocalException, AddressException {
+                                                       EWSPollTableEntry entry) throws ServiceLocalException, AddressException {
         MailOutTransportInfo outInfo = new MailOutTransportInfo(entry.getEmailAddress());
 
         // determine reply address
@@ -528,40 +524,43 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<P
      * @param entry   the PollTableEntry for the email that has been processed
      * @param message the email message to be moved or deleted
      */
-    private void moveOrDeleteAfterProcessing(final PollTableEntry entry, EwsMailClient client, EmailMessage message) throws Exception {
+    private void moveOrDeleteAfterProcessing(final EWSPollTableEntry entry, EwsMailClient client, EmailMessage message) throws Exception {
 
         String moveToFolder = null;
 
         switch (entry.getLastPollState()) {
-            case PollTableEntry.SUCCSESSFUL:
-                if (entry.getActionAfterProcess() == PollTableEntry.ActionType.MOVE) {
+            case EWSPollTableEntry.SUCCSESSFUL:
+                if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MOVE) {
                     moveToFolder = entry.getMoveAfterProcess();
                 }
                 break;
 
-            case PollTableEntry.FAILED:
-                if (entry.getActionAfterFailure() == PollTableEntry.ActionType.MOVE) {
+            case EWSPollTableEntry.FAILED:
+                if (entry.getActionAfterFailure() == EWSPollTableEntry.ActionType.MOVE) {
                     moveToFolder = entry.getMoveAfterFailure();
                 }
                 break;
-            case PollTableEntry.NONE:
+            case EWSPollTableEntry.NONE:
                 return;
         }
 
         // We dont support MOVING at this moment....
-        if (entry.getActionAfterProcess() == PollTableEntry.ActionType.MOVE) {
+        if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MOVE) {
             log.error("ActionAfterProcess MOVE is currently not supported !!! Message will not be touched in mailbox");
             client.moveMessage(message, moveToFolder);
-        } else if (entry.getActionAfterProcess() == PollTableEntry.ActionType.DELETE) {
+        } else if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.DELETE) {
             log.error("ActionAfterProcess DELETE is currently not supported !!! Message will not be touched in mailbox!");
-            //client.deleteMessage(message);
+            client.deleteMessage(message, entry.getDeleteActionType());
+        } else if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MARKASREAD) {
+            log.debug("ActionAfterProcess MARKASREAD. Marking message as read.");
+            client.markAsRead(message);
         }
 
     }
 
     @Override
-    protected PollTableEntry createEndpoint() {
-        return new PollTableEntry(log);
+    protected EWSPollTableEntry createEndpoint() {
+        return new EWSPollTableEntry(log);
     }
 
     public void addErrorListener(TransportErrorListener listener) {

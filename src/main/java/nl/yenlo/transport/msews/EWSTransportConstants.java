@@ -23,33 +23,35 @@ import microsoft.exchange.webservices.data.WellKnownFolderName;
 
 import javax.mail.Session;
 
-public class MailConstants {
+public class EWSTransportConstants {
     public static WellKnownFolderName DEFAULT_FOLDER = WellKnownFolderName.Inbox;
 
-    public static final String TRANSPORT_MAIL_ACTION_AFTER_PROCESS = "transport.mail.ActionAfterProcess";
-    public static final String TRANSPORT_MAIL_ACTION_AFTER_FAILURE = "transport.mail.ActionAfterFailure";
-    public static final String TRANSPORT_MAIL_DELETE_ACTION_TYPE = "transport.mail.DeleteActionType";
+    public static final String TRANSPORT_MAIL_ACTION_AFTER_PROCESS = "transport.ews.ActionAfterProcess";
+    public static final String TRANSPORT_MAIL_ACTION_AFTER_FAILURE = "transport.ews.ActionAfterFailure";
+    public static final String TRANSPORT_MAIL_DELETE_ACTION_TYPE = "transport.ews.DeleteActionType";
 
-    public static final String TRANSPORT_MAIL_MOVE_AFTER_PROCESS = "transport.mail.MoveAfterProcess";
-    public static final String TRANSPORT_MAIL_MOVE_AFTER_FAILURE = "transport.mail.MoveAfterFailure";
+    public static final String TRANSPORT_MAIL_MOVE_AFTER_PROCESS = "transport.ews.MoveAfterProcess";
+    public static final String TRANSPORT_MAIL_MOVE_AFTER_FAILURE = "transport.ews.MoveAfterFailure";
 
-    public static final String TRANSPORT_MAIL_PROCESS_IN_PARALLEL = "transport.mail.ProcessInParallel";
+    public static final String TRANSPORT_MAIL_PROCESS_IN_PARALLEL = "transport.ews.ProcessInParallel";
 
-    public static final String TRANSPORT_MAIL_ADDRESS  = "transport.mail.Address";
+    public static final String TRANSPORT_MAIL_ADDRESS  = "transport.ews.Address";
     
-    public static final String TRANSPORT_MAIL_DEBUG = "transport.mail.Debug";
+    public static final String TRANSPORT_MAIL_DEBUG = "transport.ews.Debug";
     
-    public static final String TRANSPORT_MAIL_FOLDER           = "transport.mail.Folder";
-    public static final String TRANSPORT_MAIL_REPLY_ADDRESS    = "transport.mail.ReplyAddress";
-    public static final String TRANSPORT_MAIL_PRESERVE_HEADERS = "transport.mail.PreserveHeaders";
-    public static final String TRANSPORT_MAIL_REMOVE_HEADERS   = "transport.mail.RemoveHeaders";
-    public static final String TRANSPORT_MAIL_EXTRACTTYPE = "transport.mail.ExtractType";
 
-    // POP3 and IMAP properties
-    public static final String MAIL_EWS_EMAILADDRESS = "mail.ews.email";
-    public static final String MAIL_EWS_PASSWORD = "mail.ews.password";
-    public static final String MAIL_EWS_URL = "mail.ews.url";
-    public static final String MAIL_EWS_MAX_MSG_COUNT = "mail.ews.maxMessageCount";
+    public static final String TRANSPORT_MAIL_REPLY_ADDRESS    = "transport.ews.ReplyAddress";
+    public static final String TRANSPORT_MAIL_PRESERVE_HEADERS = "transport.ews.PreserveHeaders";
+    public static final String TRANSPORT_MAIL_REMOVE_HEADERS   = "transport.ews.RemoveHeaders";
+    public static final String TRANSPORT_MAIL_EXTRACTTYPE = "transport.ews.extractType";
+    public static final String TRANSPORT_MAIL_DELETETYPE = "transport.ews.deleteType";
+
+    // EWS properties
+    public static final String MAIL_EWS_EMAILADDRESS = "transport.ews.email";
+    public static final String MAIL_EWS_PASSWORD = "transport.ews.password";
+    public static final String MAIL_EWS_URL = "transport.ews.url";
+    public static final String MAIL_EWS_MAX_MSG_COUNT = "transport.ews.maxMessageCount";
+    public static final String MAIL_EWS_FOLDER = "transport.ews.folder";
 
     // transport / mail headers
     public static final String MAIL_HEADER_TO          = "To";

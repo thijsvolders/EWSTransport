@@ -2,10 +2,10 @@ package org.apache.axis2.transport.msews;
 
 import microsoft.exchange.webservices.data.EmailMessage;
 import microsoft.exchange.webservices.data.EmailMessageSchema;
+import microsoft.exchange.webservices.data.FolderId;
 import microsoft.exchange.webservices.data.LogicalOperator;
 import microsoft.exchange.webservices.data.SearchFilter;
 import microsoft.exchange.webservices.data.WellKnownFolderName;
-import nl.yenlo.transport.msews.PollTableEntry;
 import nl.yenlo.transport.msews.client.EwsMailClient;
 import org.apache.axis2.util.IOUtils;
 import org.apache.commons.logging.Log;
@@ -27,9 +27,9 @@ import java.util.Iterator;
 @Ignore
 public class EwsMailClientTest {
     private final static Log logger = LogFactory.getLog(EwsMailClientTest.class);
-    public static final String SERVICE_URL = "YourServerHere";
-    public static final String USERACCOUNT = "YourAccountHere";
-    public static final String DOMAIN = "YouDomainHere";
+    public static final String SERVICE_URL = "https://10.31.40.30/EWS/Exchange.asmx";
+    public static final String USERACCOUNT = "tvolders";
+    public static final String DOMAIN = "nl";
     public static final String PW_SYSTEM_PROP = "pw";
     private EwsMailClient client;
 
@@ -40,10 +40,10 @@ public class EwsMailClientTest {
         String pw = System.getProperty(PW_SYSTEM_PROP);
         client.withLogin(USERACCOUNT, pw, DOMAIN).withServiceURL(SERVICE_URL);
 
-        client.forFolder(WellKnownFolderName.Inbox);
+        client.forFolder(new FolderId(WellKnownFolderName.Inbox));
         SearchFilter.SearchFilterCollection sf = new SearchFilter.SearchFilterCollection(LogicalOperator.And,
-                new SearchFilter.ContainsSubstring(EmailMessageSchema.Sender, "@example.com"),
-                new SearchFilter.ContainsSubstring(EmailMessageSchema.Subject, "Test"));
+                new SearchFilter.ContainsSubstring(EmailMessageSchema.Sender, "@familievolders.com"), new SearchFilter.IsEqualTo(EmailMessageSchema.IsRead, false) /*,
+                new SearchFilter.ContainsSubstring(EmailMessageSchema.Subject, "Test")*/);
 
         client.withSearchFilter(sf);
         client.withBatchSize(3).getMailEntries();
@@ -65,6 +65,7 @@ public class EwsMailClientTest {
             IOUtils.copy(bodyAsInputStream, System.out, false);
 
            // client.deleteMessage(item, PollTableEntry.DeleteActionType.TRASH);
+            client.markAsRead(item);
 
         }
     }

@@ -2,27 +2,26 @@ package nl.yenlo.transport.msews.client;
 
 import microsoft.exchange.webservices.data.BasePropertySet;
 import microsoft.exchange.webservices.data.BodyType;
+import microsoft.exchange.webservices.data.ConflictResolutionMode;
 import microsoft.exchange.webservices.data.DeleteMode;
 import microsoft.exchange.webservices.data.EmailMessage;
 import microsoft.exchange.webservices.data.EmailMessageSchema;
 import microsoft.exchange.webservices.data.ExchangeCredentials;
 import microsoft.exchange.webservices.data.ExchangeService;
 import microsoft.exchange.webservices.data.ExchangeVersion;
-import microsoft.exchange.webservices.data.ExtendedProperty;
-import microsoft.exchange.webservices.data.ExtendedPropertyDefinition;
 import microsoft.exchange.webservices.data.FindItemsResults;
 import microsoft.exchange.webservices.data.FolderId;
 import microsoft.exchange.webservices.data.ITraceListener;
 import microsoft.exchange.webservices.data.Item;
 import microsoft.exchange.webservices.data.ItemView;
-import microsoft.exchange.webservices.data.PropertyDefinitionBase;
 import microsoft.exchange.webservices.data.PropertySet;
 import microsoft.exchange.webservices.data.SearchFilter;
 import microsoft.exchange.webservices.data.ServiceLocalException;
+import microsoft.exchange.webservices.data.ServiceResponseException;
 import microsoft.exchange.webservices.data.TraceFlags;
 import microsoft.exchange.webservices.data.WebCredentials;
 import microsoft.exchange.webservices.data.WellKnownFolderName;
-import nl.yenlo.transport.msews.PollTableEntry;
+import nl.yenlo.transport.msews.EWSPollTableEntry;
 import nl.yenlo.transport.msews.client.exception.EwsMailClientCommunicationException;
 import nl.yenlo.transport.msews.client.exception.EwsMailClientConfigException;
 import nl.yenlo.transport.msews.log.EWSTraceListener;
@@ -110,7 +109,7 @@ public class EwsMailClient {
      *
      * @param serviceURI the serviceURI of the EWS endpoint
      * @return the client instance with configured serviceURL
-     * @see nl.yenlo.transport.msews.PollTableEntry#getDomain()
+     * @see nl.yenlo.transport.msews.EWSPollTableEntry#getDomain()
      * </p>
      */
     public EwsMailClient withServiceURL(String serviceURI) {
@@ -183,26 +182,8 @@ public class EwsMailClient {
      * @param folder a WellKnownFolderName
      * @return the mailClient instance.
      */
-    public EwsMailClient forFolder(WellKnownFolderName folder) {
-        this.folder = new FolderId(folder);
-        return this;
-    }
-
-    /**
-     * Supply the folder to retrieve mails from.
-     * <p>
-     * This setter allows custom foldernames to be supplied. No Guarantees whether the supplied foldername will work.
-     * </p>
-     *
-     * @param folderName the foldername to use.
-     * @return the mailClient instance
-     */
-    public EwsMailClient forFolder(String folderName) {
-        try {
-            this.folder = new FolderId(folderName);
-        } catch (Exception e) {
-            throw new EwsMailClientConfigException("Invalid foldername given", e);
-        }
+    public EwsMailClient forFolder(FolderId folder) {
+        this.folder = folder;
         return this;
     }
 
@@ -345,8 +326,7 @@ public class EwsMailClient {
      * @return the contentType
      */
     public String getBodyContentType(final EmailMessage message) {
-        return null;
-
+        return "application/xml"; // default is XML...
     }
 
     /**
@@ -354,10 +334,11 @@ public class EwsMailClient {
      *
      * @param message the message to delete
      */
-    public void deleteMessage(EmailMessage message, PollTableEntry.DeleteActionType deleteActionType) {
+    public void deleteMessage(EmailMessage message, EWSPollTableEntry.DeleteActionType deleteActionType) {
         // Be carefull here!!! You will be deleting mails from the mailbox!!
         try {
-            message.delete(deleteActionType == PollTableEntry.DeleteActionType.TRASH ? DeleteMode.SoftDelete : DeleteMode.HardDelete);
+            log.info("Message to indicate that a mail would be deleted with subject : " + message.getSubject());
+            //message.delete(deleteActionType == EWSPollTableEntry.DeleteActionType.TRASH ? DeleteMode.SoftDelete : DeleteMode.HardDelete);
         } catch (Exception e) {
             log.error("Could not successfully delete the message. ", e);
             throw new EwsMailClientCommunicationException("Could not successfully delete the message. ", e);
@@ -377,6 +358,18 @@ public class EwsMailClient {
         } catch (Exception e) {
             throw new EwsMailClientCommunicationException("A communication exception occurred while moving the email message", e);
         }
+    }
+
+    public void markAsRead(EmailMessage message) {
+        try {
+            message.setIsRead(true);
+            message.update(ConflictResolutionMode.AutoResolve);
+        } catch (ServiceResponseException sre) {
+            throw new EwsMailClientCommunicationException("Could not mark message as 'read'. ", sre);
+        } catch (Exception e) {
+            throw new EwsMailClientCommunicationException("Could not mark message as 'read'. ", e);
+        }
+
     }
 
 }

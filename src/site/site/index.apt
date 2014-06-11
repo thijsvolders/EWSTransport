@@ -1,0 +1,53 @@
+            ------
+            Exchange WebServices Axis2 Transport
+            ------
+            Thijs Volders (thijs.volders@yenlo.com)
+            ------
+             June 10th 2014
+
+Exchange Web Services Axis2 Transport
+
+ The EWSTransport provides support for a polling-type communication with an Microsoft Exchange Web Services mailbox.
+ It uses the EWSJava API from Microsoft to communicate with the Exchange server.
+
+ At this moment only a Listener is supported. Sender support will come soon.
+
+* Usage
+
+** Configuration
+
+    Axis2 transports are configured in the axis2.xml.
+    Add the following configuration to the axis2.xml to enable the EWSTransportListener
+
+    ---
+    <transportReceiver name="ews" class="nl.yenlo.transport.msews.EWSMailTransportListener">
+    </transportReceiver>
+    ---
+
+
+** Proxy
+
+    To use this transport in a proxy you need to enable the transport on the proxy itself and configure the parameters for the listener to use.
+    The transport will read only unread mails per default.
+
+    The following configuration parameters are available on the transport configuration within a proxy-service:
+
+    *-------------------*----------------------------------------------------*-----------*---------------------------------------------------------------------------------------------------*
+    ||Required/Optional || Parametername                                     || Type     || Description                                                                                      |
+    *-------------------*----------------------------------------------------*-----------*---------------------------------------------------------------------------------------------------*
+    | Required          | transport.ews.email (required)                     | text      | The email address of the mailbox (a.k.a the username)                                             |
+    | Required          | transport.ews.password (required)                  | text      | The password to open te mailbox                                                                   |
+    | Required          | transport.ews.url (required)                       | text      | The url to the EWS service. i.e. https://ExchangeMailHost/EWS/Exchange.asmx                       |
+    | Required          | transport.ews.folder (required)                    | text      | A folder name to get the mails from                                                               |
+    | Optional          | transport.PollInterval (optional)                  | number    | The polling interval in millis                                                                    |
+    | Optional          | transport.ConcurrentPollingAllowed (optional)      | boolean   | Can polling occur in parallel?                                                                    |
+    | Optional          | transport.ews.ActionAfterProcess                   | enum      | What to do with the mail after processing (MOVE, DELETE, NOTHING, MARKASREAD (Default))           |
+    | Optional          | transport.ews.ActionAfterFailure                   | enum      | What to do with the mail after failed procesing (MOVE, DELETE, MARKASREAD, NOTHING (Default))     |
+    | Optional          | transport.ews.MoveAfterProcess                     | text      | To which folder should the mail be moved (if ActionAfterProcess/ActionAfterFail is set to MOVE!)  |
+    | Optional          | transport.ews.ProcessInParallel                    | boolean   | Can the messages be sent into the Axis2Engine in parallel?                                        |
+    | Optional          | transport.ews.maxMessageCount                      | number    | How many messages to retrieve from the mailbox per polling interval (default 10)                  |
+    | Optional          | transport.ews.extractType                          | enum      | Should the body or (one of) the attachments be used to construct a message from                   |
+    | Optional          | transport.ews.PreserveHeaders                      | enum      | Which mail header should be preserved? This is a comma-separated list of headernames              |
+    | Optional          | transport.ews.RemoveHeaders                        | enum      | Which mail header should be preserved? This is a comma-separated list of headernames              |
+    *-------------------*----------------------------------------------------*-----------*---------------------------------------------------------------------------------------------------*
+
