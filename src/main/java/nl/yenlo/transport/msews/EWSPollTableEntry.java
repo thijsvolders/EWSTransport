@@ -170,7 +170,6 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
      * folder to move the email after failure
      */
     private String moveAfterFailure;
-
     /**
      * Should mail be processed in parallel? e.g. with IMAP
      */
@@ -267,10 +266,21 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
             } catch (AddressException e) {
                 throw new AxisFault("Invalid email address specified by '" + EWSTransportConstants.TRANSPORT_MAIL_REPLY_ADDRESS + "' parameter :: " + e.getMessage());
             }
+
             // Getting the attachment folder Default is the system tempora
-            String attachementFolder = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_ATTACHMENT_FOLDER);
-            if (attachementFolder != null) {
-                this.attachmentFolder = attachementFolder;
+            String attachmentFolder = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_ATTACHMENT_FOLDER);
+            if (attachmentFolder != null) {
+                this.attachmentFolder = attachmentFolder;
+            }
+
+            // setting the transport.ews.extractType parameter if it exists in the optional parameter
+            try {
+                String extractType = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_EXTRACT_TYPE);
+                if (extractType != null) {
+                    this.extractType = this.extractType.valueOf(extractType.toUpperCase());
+                }
+            } catch (EnumConstantNotPresentException e) {
+                throw new AxisFault("Invalid parameter ExtractType specified by '" + EWSTransportConstants.MAIL_EWS_EXTRACT_TYPE + "' parameter :: " + e.getMessage());
             }
 
             String transportFolderNameValue = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_FOLDER);

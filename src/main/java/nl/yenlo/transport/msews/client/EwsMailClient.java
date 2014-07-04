@@ -1,26 +1,20 @@
 package nl.yenlo.transport.msews.client;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.file.Files;
-import java.util.EnumSet;
-import java.util.Iterator;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
 import microsoft.exchange.webservices.data.*;
 import nl.yenlo.transport.msews.EWSPollTableEntry;
 import nl.yenlo.transport.msews.client.exception.EwsMailClientCommunicationException;
 import nl.yenlo.transport.msews.client.exception.EwsMailClientConfigException;
 import nl.yenlo.transport.msews.log.EWSTraceListener;
-
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
+
+import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.EnumSet;
+import java.util.Iterator;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.FileHandler;
 
 /**
  * This is a class to connect with an Exchange WebServices enabled mailbox.
@@ -48,6 +42,42 @@ public class EwsMailClient {
 
     private int batchSize = 10;
     private FindItemsResults<Item> items = null;
+
+    /**
+     * A simple Runnable which write the fileAtachment to disk.
+     */
+    private class FileHandler implements Runnable {
+        String tmpFileName;
+        String filename;
+        int fileSize;
+        FileAttachment fileAttachment;
+
+        public FileHandler(FileAttachment fa, String tfn, String fn, int fs) {
+            tmpFileName = tfn;
+            filename = fn;
+            fileSize = fs;
+            fileAttachment = fa;
+        }
+
+        @Override
+        public void run() {
+            try {
+                writeBytesToFile(fileAttachment.getContent(), tmpFileName);
+                File tmpFile = new File(tmpFileName);
+                tmpFile.renameTo(new File(filename));
+                tmpFile.delete();
+            } catch (Exception e) {
+                throw new EwsMailClientCommunicationException("could not write attachement to disk.", e);
+            }
+        }
+
+        private void writeBytesToFile(byte[] content, String file) throws IOException {
+            FileOutputStream fos = new FileOutputStream(file);
+            fos.write(content);
+            fos.close();
+
+        }
+    }
 
     /**
      * Initialize the client.
@@ -308,77 +338,6 @@ public class EwsMailClient {
     }
 
     /**
-     * This method allows you to load the attachement and store the attachement in a temporary directory
-     *
-     * @param extractionFolder where to extract attachments to
-     * @param message the message to extract attachments from
-     * @throws Exception Whenever the hasAttachments call fails or when attachments cant be loaded.
-     */
-    public void loadAttachments(String extractionFolder, EmailMessage message) throws Exception {
-        FileAttachment fa = null;
-        if (message.getHasAttachments()) {
-            if (log.isTraceEnabled()) {
-                log.trace("The mail has attachments");
-            }
-            ExecutorService execService = null;
-            // We must have an attachment
-            // FIXME: Check against regex whether this is interesting
-            AttachmentCollection attachments = message.getAttachments();
-
-            String fileName = null;
-            String tmpFileName = null;
-            for (Attachment attachment : attachments) {
-                // LOG the attachment info
-
-                if (attachment instanceof FileAttachment) {
-                    fa = (FileAttachment) attachment;
-                    // Getting the ews temp location
-                    String tempDir = extractionFolder;
-                    // building up targetFile name
-                    fileName = tempDir + File.separator + fa.getName();
-                    // building up tmp file name
-                    tmpFileName = tempDir + File.separator + fa.getName() + ".tmp";
-
-                    // Only load the FileAttachment when its present
-                    if (fa != null) {
-                        // load the file in stream
-                        // NOTE that i encounter some problems with load(String path) the api wrote the file in a bg process which made it difficult
-                        // to detect when the file is done to rename it from temp to target file
-                        // solution provided in the class FileHandler
-                        fa.load();
-                        // write the file to disk in a bgprocess
-                        execService = Executors.newSingleThreadExecutor();
-                        execService.execute(new FileHandler(fa, tmpFileName, fileName, fa.getSize()));
-
-
-                    }
-                } else {
-                    if (log.isInfoEnabled()) {
-                        log.info("An attachment of an unknown type has been discovered (type found is : " + attachment.getClass().getName() + ")");
-                    }
-                }
-            }
-        }
-    }
-
-    public InputStream getAttachmentAsInputStream(final EmailMessage message) {
-        if (log.isTraceEnabled()) {
-            log.trace("The mail has NO attachments. Using the body as message.");
-        }
-        try {
-            if (message.getBody().getBodyType() == BodyType.HTML) {
-                // must escape when accepting HTML content. (as HTML is not proper XML)
-                throw new RuntimeException("HTML bodytypes are not supported!!");
-            }
-
-            // Get the body text and put that into the InputStream
-            return new ByteArrayInputStream(message.getBody().toString().getBytes());
-        } catch (ServiceLocalException sle) {
-            throw new EwsMailClientCommunicationException("Could not extract body from the email.", sle);
-        }
-    }
-
-    /**
      * Retrieve the contentType of the mailBody from the supplied message
      *
      * @param message the message to get the contentType from..
@@ -412,11 +371,42 @@ public class EwsMailClient {
      */
     public void moveMessage(EmailMessage message, String toFolder) {
         try {
+            Folder folder = getFolderByName(toFolder);
             // We will move the message.
-            message.move(new FolderId(toFolder));
+            message.move(folder.getId());
         } catch (Exception e) {
             throw new EwsMailClientCommunicationException("A communication exception occurred while moving the email message", e);
         }
+    }
+
+    /**
+     * Retrieve the Folder instance by its name from the mailbox.
+     * <p>
+     * When not found throw a runtimeException.
+     * </p>
+     *
+     * @param folderName the foldername to find
+     * @return the Folder instance if it exists
+     * @throws Exception whenever the folder could not be found by its name
+     */
+    private Folder getFolderByName(String folderName) throws Exception {
+        Folder targetFolder = null;
+
+        Folder rootfolder = Folder.bind(service, WellKnownFolderName.MsgFolderRoot);
+        rootfolder.load();
+        for (Folder folder : rootfolder.findFolders(new FolderView(100))) {
+            // Finds the emails in a certain folder, in this case the Junk Email
+            // This IF limits what folder the program will seek
+            if (folderName.equals(folder.getDisplayName())) {
+                targetFolder = folder;
+                break;
+            }
+        }
+
+        if (targetFolder == null) {
+            throw new RuntimeException("Unable to find folder (" + folderName + ") in specified mailaccount.");
+        }
+        return targetFolder;
     }
 
     public void markAsRead(EmailMessage message) {
@@ -432,41 +422,63 @@ public class EwsMailClient {
     }
 
 
-    private class FileHandler implements Runnable {
-        String tmpFileName;
-        String filename;
-        int fileSize;
-        FileAttachment fileAttachment;
-
-        public FileHandler(FileAttachment fa, String tfn, String fn, int fs) {
-            tmpFileName = tfn;
-            filename = fn;
-            fileSize = fs;
-            fileAttachment = fa;
-        }
-
-        @Override
-        public void run() {
-            try {
-                writeBytesToFile(fileAttachment.getContent(), tmpFileName);
-                File tmpFile = new File(tmpFileName);
-
-                // Source: http://docs.oracle.com/javase/7/docs/api/java/nio/file/Files.html#move(java.nio.file.Path,%20java.nio.file.Path,%20java.nio.file.CopyOption...)
-                Files.move(tmpFile.toPath(), tmpFile.toPath().resolveSibling(filename));
-            } catch (Exception e) {
-                throw new EwsMailClientCommunicationException("Could not write attachment to disk.", e);
+    /**
+     * This method allows you to load the attachement and store the attachement in a temporary directory
+     *
+     * @param attachmentFolderName
+     * @param message
+     * @param contentType
+     * @return
+     * @throws ServiceLocalException
+     * @throws Exception
+     */
+    public void loadAttachments(String attachmentFolderName, EmailMessage message) throws ServiceLocalException, Exception {
+        FileAttachment fa = null;
+        if (message.getHasAttachments()) {
+            if (log.isTraceEnabled()) {
+                log.trace("The mail has attachments");
             }
-        }
+            ExecutorService execService = null;
+            // We must have an attachment
+            // FIXME: Check against regex whether this is interesting
+            AttachmentCollection attachments = message.getAttachments();
 
-        private void writeBytesToFile(byte[] content, String file) throws IOException {
-            FileOutputStream fos = new FileOutputStream(file);
+            String fileName = null;
+            String tmpFileName = null;
+            for (Attachment attachment : attachments) {
+                // LOG the attachment info
+                if (attachment instanceof FileAttachment) {
+                    fa = (FileAttachment) attachment;
 
-            if (log.isDebugEnabled()) {
-                log.debug("Writing bytes to file: " + file);
+                    // building up targetFile name
+                    fileName = attachmentFolderName + File.separator + fa.getName();
+                    // building up tmp file name
+                    tmpFileName = attachmentFolderName + File.separator + fa.getName() + ".tmp";
+
+                    // Only load the FileAttachment when its present
+                    if (fa != null) {
+                        // load the file in stream
+                        // NOTE that i encounter some problems with load(String path) the api wrote the file in a bg process which made it difficult
+                        // to detect when the file is done to rename it from temp to target file
+                        // solution provider in the class FileHandler
+                        if (log.isTraceEnabled()) {
+                            log.trace("Loading and writing an attachment to " + tmpFileName);
+                        }
+
+                        fa.load();
+                        // write the file to disk in a bgprocess
+                        execService = Executors.newSingleThreadExecutor();
+                        execService.execute(new FileHandler(fa, tmpFileName, fileName, fa.getSize()));
+                    }
+
+                    //Step out of this for loop
+                    break;
+                } else {
+                    if (log.isInfoEnabled()) {
+                        log.info("An attachment of an unknown type has been discovered (type found is : " + attachment.getClass().getName() + ")");
+                    }
+                }
             }
-            IOUtils.write(content, fos);
-
-            fos.close();
 
         }
     }

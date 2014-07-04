@@ -50,7 +50,8 @@ Exchange Web Services Axis2 Transport
     | Optional          | transport.ConcurrentPollingAllowed                 | boolean   | Can polling occur in parallel?                                                                    |
     | Optional          | transport.ews.ActionAfterProcess                   | enum      | What to do with the mail after processing (MOVE, DELETE, NOTHING, MARKASREAD (Default))           |
     | Optional          | transport.ews.ActionAfterFailure                   | enum      | What to do with the mail after failed procesing (MOVE, DELETE, MARKASREAD, NOTHING (Default))     |
-    | Optional          | transport.ews.MoveAfterProcess                     | text      | To which folder should the mail be moved (if ActionAfterProcess/ActionAfterFail is set to MOVE!)  |
+    | Optional          | transport.ews.MoveAfterProcess                     | text      | To which folder should the mail be moved (if ActionAfterProcess is set to MOVE!)                  |
+    | Optional          | transport.ews.MoveAfterFailure                     | text      | To which folder should the mail be moved (if ActionAfterFail is set to MOVE!)                     |
     | Optional          | transport.ews.ProcessInParallel                    | boolean   | Can the messages be sent into the Axis2Engine in parallel?                                        |
     | Optional          | transport.ews.maxMessageCount                      | number    | How many messages to retrieve from the mailbox per polling interval (default 10)                  |
     | Optional          | transport.ews.extractType                          | enum      | Should the body or (one of) the attachments be used to construct a message from                   |

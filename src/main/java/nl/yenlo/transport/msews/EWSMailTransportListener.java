@@ -19,16 +19,18 @@
 
 package nl.yenlo.transport.msews;
 
+import microsoft.exchange.webservices.data.Attachment;
+import microsoft.exchange.webservices.data.AttachmentCollection;
 import microsoft.exchange.webservices.data.EmailAddress;
 import microsoft.exchange.webservices.data.EmailAddressCollection;
 import microsoft.exchange.webservices.data.EmailMessage;
 import microsoft.exchange.webservices.data.EmailMessageSchema;
+import microsoft.exchange.webservices.data.FileAttachment;
 import microsoft.exchange.webservices.data.InternetMessageHeader;
 import microsoft.exchange.webservices.data.InternetMessageHeaderCollection;
 import microsoft.exchange.webservices.data.SearchFilter;
 import microsoft.exchange.webservices.data.ServiceLocalException;
 import nl.yenlo.transport.msews.client.EwsMailClient;
-
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.Constants;
 import org.apache.axis2.addressing.EndpointReference;
@@ -46,9 +48,10 @@ import javax.mail.MessagingException;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.xml.stream.XMLStreamException;
-
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -92,6 +95,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
         if (cfgCtx.getProperty(BaseConstants.CALLBACK_TABLE) == null) {
             cfgCtx.setProperty(BaseConstants.CALLBACK_TABLE, new ConcurrentHashMap());
         }
+
         log.info("Initializing Exchange WS 2013 Listener (" + transportName + ")...");
     }
 
@@ -413,6 +417,8 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
             log.debug("Processed message : " + message.getInternetMessageId() + " :: " + message.getSubject());
         }
     }
+
+	
 
     private void updateMetrics(EmailMessage message) throws ServiceLocalException {
         int size = message.getSize();

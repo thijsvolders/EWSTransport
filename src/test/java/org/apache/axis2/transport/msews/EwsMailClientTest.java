@@ -27,10 +27,17 @@ import java.util.Iterator;
 @Ignore
 public class EwsMailClientTest {
     private final static Log logger = LogFactory.getLog(EwsMailClientTest.class);
-    public static final String SERVICE_URL = "https://10.31.40.30/EWS/Exchange.asmx";
-    public static final String USERACCOUNT = "tvolders";
     public static final String DOMAIN = "nl";
+    // System properties
+    // password
     public static final String PW_SYSTEM_PROP = "pw";
+    // username
+    public static final String UN_SYSTEM_PROP = "un";
+    // domain
+    public static final String DOMAIN_SYSTEM_PROP = "domain";
+    // service url, something like "https://xx.xx.xx.xx/EWS/Exchange.asmx";
+    public static final String SU_SYSTEM_PROP = "su"; //serviceURL
+
     private EwsMailClient client;
 
     @Before
@@ -38,16 +45,18 @@ public class EwsMailClientTest {
         client = new EwsMailClient(logger);
 
         String pw = System.getProperty(PW_SYSTEM_PROP);
-        client.withLogin(USERACCOUNT, pw, DOMAIN).withServiceURL(SERVICE_URL);
+        String un = System.getProperty(UN_SYSTEM_PROP);
+        String domain = System.getProperty(DOMAIN_SYSTEM_PROP);
+        String serviceUrl = System.getProperty(SU_SYSTEM_PROP);
+        client.withLogin(un, pw, DOMAIN).withServiceURL(serviceUrl);
 
         client.forFolder(new FolderId(WellKnownFolderName.Inbox));
         SearchFilter.SearchFilterCollection sf = new SearchFilter.SearchFilterCollection(LogicalOperator.And,
-                new SearchFilter.ContainsSubstring(EmailMessageSchema.Sender, "@familievolders.com"), new SearchFilter.IsEqualTo(EmailMessageSchema.IsRead, false) /*,
+                new SearchFilter.ContainsSubstring(EmailMessageSchema.Sender, "@" + domain), new SearchFilter.IsEqualTo(EmailMessageSchema.IsRead, false) /*,
                 new SearchFilter.ContainsSubstring(EmailMessageSchema.Subject, "Test")*/);
 
         client.withSearchFilter(sf);
         client.withBatchSize(3).getMailEntries();
-
 
     }
 
