@@ -1,38 +1,26 @@
 package nl.yenlo.transport.msews.client;
 
-import microsoft.exchange.webservices.data.BasePropertySet;
-import microsoft.exchange.webservices.data.BodyType;
-import microsoft.exchange.webservices.data.ConflictResolutionMode;
-import microsoft.exchange.webservices.data.DeleteMode;
-import microsoft.exchange.webservices.data.EmailMessage;
-import microsoft.exchange.webservices.data.EmailMessageSchema;
-import microsoft.exchange.webservices.data.ExchangeCredentials;
-import microsoft.exchange.webservices.data.ExchangeService;
-import microsoft.exchange.webservices.data.ExchangeVersion;
-import microsoft.exchange.webservices.data.FindItemsResults;
-import microsoft.exchange.webservices.data.FolderId;
-import microsoft.exchange.webservices.data.ITraceListener;
-import microsoft.exchange.webservices.data.Item;
-import microsoft.exchange.webservices.data.ItemView;
-import microsoft.exchange.webservices.data.PropertySet;
-import microsoft.exchange.webservices.data.SearchFilter;
-import microsoft.exchange.webservices.data.ServiceLocalException;
-import microsoft.exchange.webservices.data.ServiceResponseException;
-import microsoft.exchange.webservices.data.TraceFlags;
-import microsoft.exchange.webservices.data.WebCredentials;
-import microsoft.exchange.webservices.data.WellKnownFolderName;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.util.EnumSet;
+import java.util.Iterator;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import microsoft.exchange.webservices.data.*;
 import nl.yenlo.transport.msews.EWSPollTableEntry;
 import nl.yenlo.transport.msews.client.exception.EwsMailClientCommunicationException;
 import nl.yenlo.transport.msews.client.exception.EwsMailClientConfigException;
 import nl.yenlo.transport.msews.log.EWSTraceListener;
-import org.apache.commons.logging.Log;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.EnumSet;
-import java.util.Iterator;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.logging.Log;
 
 /**
  * This is a class to connect with an Exchange WebServices enabled mailbox.
@@ -320,6 +308,77 @@ public class EwsMailClient {
     }
 
     /**
+     * This method allows you to load the attachement and store the attachement in a temporary directory
+     *
+     * @param extractionFolder where to extract attachments to
+     * @param message the message to extract attachments from
+     * @throws Exception Whenever the hasAttachments call fails or when attachments cant be loaded.
+     */
+    public void loadAttachments(String extractionFolder, EmailMessage message) throws Exception {
+        FileAttachment fa = null;
+        if (message.getHasAttachments()) {
+            if (log.isTraceEnabled()) {
+                log.trace("The mail has attachments");
+            }
+            ExecutorService execService = null;
+            // We must have an attachment
+            // FIXME: Check against regex whether this is interesting
+            AttachmentCollection attachments = message.getAttachments();
+
+            String fileName = null;
+            String tmpFileName = null;
+            for (Attachment attachment : attachments) {
+                // LOG the attachment info
+
+                if (attachment instanceof FileAttachment) {
+                    fa = (FileAttachment) attachment;
+                    // Getting the ews temp location
+                    String tempDir = extractionFolder;
+                    // building up targetFile name
+                    fileName = tempDir + File.separator + fa.getName();
+                    // building up tmp file name
+                    tmpFileName = tempDir + File.separator + fa.getName() + ".tmp";
+
+                    // Only load the FileAttachment when its present
+                    if (fa != null) {
+                        // load the file in stream
+                        // NOTE that i encounter some problems with load(String path) the api wrote the file in a bg process which made it difficult
+                        // to detect when the file is done to rename it from temp to target file
+                        // solution provided in the class FileHandler
+                        fa.load();
+                        // write the file to disk in a bgprocess
+                        execService = Executors.newSingleThreadExecutor();
+                        execService.execute(new FileHandler(fa, tmpFileName, fileName, fa.getSize()));
+
+
+                    }
+                } else {
+                    if (log.isInfoEnabled()) {
+                        log.info("An attachment of an unknown type has been discovered (type found is : " + attachment.getClass().getName() + ")");
+                    }
+                }
+            }
+        }
+    }
+
+    public InputStream getAttachmentAsInputStream(final EmailMessage message) {
+        if (log.isTraceEnabled()) {
+            log.trace("The mail has NO attachments. Using the body as message.");
+        }
+        try {
+            if (message.getBody().getBodyType() == BodyType.HTML) {
+                // must escape when accepting HTML content. (as HTML is not proper XML)
+                throw new RuntimeException("HTML bodytypes are not supported!!");
+            }
+
+            // Get the body text and put that into the InputStream
+            return new ByteArrayInputStream(message.getBody().toString().getBytes());
+        } catch (ServiceLocalException sle) {
+            throw new EwsMailClientCommunicationException("Could not extract body from the email.", sle);
+        }
+    }
+
+    /**
      * Retrieve the contentType of the mailBody from the supplied message
      *
      * @param message the message to get the contentType from..
@@ -338,7 +397,7 @@ public class EwsMailClient {
         // Be carefull here!!! You will be deleting mails from the mailbox!!
         try {
             log.info("Message to indicate that a mail would be deleted with subject : " + message.getSubject());
-            //message.delete(deleteActionType == EWSPollTableEntry.DeleteActionType.TRASH ? DeleteMode.SoftDelete : DeleteMode.HardDelete);
+            message.delete(deleteActionType == EWSPollTableEntry.DeleteActionType.TRASH ? DeleteMode.SoftDelete : DeleteMode.HardDelete);
         } catch (Exception e) {
             log.error("Could not successfully delete the message. ", e);
             throw new EwsMailClientCommunicationException("Could not successfully delete the message. ", e);
@@ -370,6 +429,46 @@ public class EwsMailClient {
             throw new EwsMailClientCommunicationException("Could not mark message as 'read'. ", e);
         }
 
+    }
+
+
+    private class FileHandler implements Runnable {
+        String tmpFileName;
+        String filename;
+        int fileSize;
+        FileAttachment fileAttachment;
+
+        public FileHandler(FileAttachment fa, String tfn, String fn, int fs) {
+            tmpFileName = tfn;
+            filename = fn;
+            fileSize = fs;
+            fileAttachment = fa;
+        }
+
+        @Override
+        public void run() {
+            try {
+                writeBytesToFile(fileAttachment.getContent(), tmpFileName);
+                File tmpFile = new File(tmpFileName);
+
+                // Source: http://docs.oracle.com/javase/7/docs/api/java/nio/file/Files.html#move(java.nio.file.Path,%20java.nio.file.Path,%20java.nio.file.CopyOption...)
+                Files.move(tmpFile.toPath(), tmpFile.toPath().resolveSibling(filename));
+            } catch (Exception e) {
+                throw new EwsMailClientCommunicationException("Could not write attachment to disk.", e);
+            }
+        }
+
+        private void writeBytesToFile(byte[] content, String file) throws IOException {
+            FileOutputStream fos = new FileOutputStream(file);
+
+            if (log.isDebugEnabled()) {
+                log.debug("Writing bytes to file: " + file);
+            }
+            IOUtils.write(content, fos);
+
+            fos.close();
+
+        }
     }
 
 }

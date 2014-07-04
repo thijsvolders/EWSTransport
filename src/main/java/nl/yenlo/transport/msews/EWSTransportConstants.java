@@ -53,6 +53,7 @@ public class EWSTransportConstants {
     public static final String MAIL_EWS_DOMAIN = "transport.ews.domain";
     public static final String MAIL_EWS_MAX_MSG_COUNT = "transport.ews.maxMessageCount";
     public static final String MAIL_EWS_FOLDER = "transport.ews.folder";
+    public static final String MAIL_EWS_ATTACHMENT_FOLDER= "transport.ews.attachementFolder";
 
     // transport / mail headers
     public static final String MAIL_HEADER_TO          = "To";
@@ -67,5 +68,5 @@ public class EWSTransportConstants {
 
     // Custom headers
     public static final String TRANSPORT_MAIL_CUSTOM_HEADERS     = "transport.mail.custom.headers";
-    
+
 }

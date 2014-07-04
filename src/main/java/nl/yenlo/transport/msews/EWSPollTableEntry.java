@@ -61,7 +61,12 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
         /**
          * Extract the mail's (one of) attachment.
          */
-        ATTACHMENTS
+        ATTACHMENTS,
+
+        /**
+         * Extract the mail and the body both.
+         */
+        ATTACHMENTS_AND_BODY
     }
 
 
@@ -165,6 +170,7 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
      * folder to move the email after failure
      */
     private String moveAfterFailure;
+
     /**
      * Should mail be processed in parallel? e.g. with IMAP
      */
@@ -179,6 +185,12 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
     private String attachmentRegExp = null;
 
     private ExtractType extractType = ExtractType.BODY;
+
+
+    /**
+     * Where to store the attachments... Default is tempdir system environment
+     */
+    private String attachmentFolder = System.getProperty("java.io.tmpdir");
 
 
     /**
@@ -254,6 +266,11 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
                 }
             } catch (AddressException e) {
                 throw new AxisFault("Invalid email address specified by '" + EWSTransportConstants.TRANSPORT_MAIL_REPLY_ADDRESS + "' parameter :: " + e.getMessage());
+            }
+            // Getting the attachment folder Default is the system tempora
+            String attachementFolder = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_ATTACHMENT_FOLDER);
+            if (attachementFolder != null) {
+                this.attachmentFolder = attachementFolder;
             }
 
             String transportFolderNameValue = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_FOLDER);
@@ -429,5 +446,9 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
 
     public DeleteActionType getDeleteActionType() {
         return deleteActionType;
+    }
+
+    public String getAttachmentFolder() {
+        return attachmentFolder;
     }
 }

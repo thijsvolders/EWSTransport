@@ -56,5 +56,7 @@ Exchange Web Services Axis2 Transport
     | Optional          | transport.ews.extractType                          | enum      | Should the body or (one of) the attachments be used to construct a message from                   |
     | Optional          | transport.ews.PreserveHeaders                      | enum      | Which mail header should be preserved? This is a comma-separated list of headernames              |
     | Optional          | transport.ews.RemoveHeaders                        | enum      | Which mail header should be preserved? This is a comma-separated list of headernames              |
+    | Optional          | transport.ews.extractType                          | enum      | Which extreaction you would like to make (Body , attachements , Body & attachements)              |
+    | Optional          | transport.ews.attachementFolder                    | text      | Temporary Path you would like store the attachments of a MAIL                                     |
     *-------------------*----------------------------------------------------*-----------*---------------------------------------------------------------------------------------------------*
 

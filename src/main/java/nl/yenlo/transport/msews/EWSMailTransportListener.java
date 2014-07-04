@@ -19,18 +19,16 @@
 
 package nl.yenlo.transport.msews;
 
-import microsoft.exchange.webservices.data.Attachment;
-import microsoft.exchange.webservices.data.AttachmentCollection;
 import microsoft.exchange.webservices.data.EmailAddress;
 import microsoft.exchange.webservices.data.EmailAddressCollection;
 import microsoft.exchange.webservices.data.EmailMessage;
 import microsoft.exchange.webservices.data.EmailMessageSchema;
-import microsoft.exchange.webservices.data.FileAttachment;
 import microsoft.exchange.webservices.data.InternetMessageHeader;
 import microsoft.exchange.webservices.data.InternetMessageHeaderCollection;
 import microsoft.exchange.webservices.data.SearchFilter;
 import microsoft.exchange.webservices.data.ServiceLocalException;
 import nl.yenlo.transport.msews.client.EwsMailClient;
+
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.Constants;
 import org.apache.axis2.addressing.EndpointReference;
@@ -48,10 +46,9 @@ import javax.mail.MessagingException;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.xml.stream.XMLStreamException;
+
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -95,7 +92,6 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
         if (cfgCtx.getProperty(BaseConstants.CALLBACK_TABLE) == null) {
             cfgCtx.setProperty(BaseConstants.CALLBACK_TABLE, new ConcurrentHashMap());
         }
-
         log.info("Initializing Exchange WS 2013 Listener (" + transportName + ")...");
     }
 
@@ -103,6 +99,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
     protected void poll(EWSPollTableEntry entry) {
         try {
             checkMail(entry, entry.getEmailAddress());
+            resume();
         } catch (Exception e) {
             // A catch all construction where we can log any exception which was uncaughtin the checkMail method
             processFailure("An unexpected error occurred while polling the EWS-mail server", e, entry);
@@ -166,6 +163,10 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
                     onCompletion.run();
                 }
             }
+            long now = System.currentTimeMillis();
+            entry.setLastPollTime(now);
+            entry.setNextPollTime(now + entry.getPollInterval());
+            onPollCompletion(entry);
         } catch (Exception sle) {
             throw new RuntimeException("An error occurred while communicating with the Exchange Webservices", sle);
 
@@ -359,56 +360,20 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
 
         // If set to process the attachments, go
         // else, use the message body as MEssagecontext SoapEnvelope..
-        if (entry.getExtractType() == EWSPollTableEntry.ExtractType.BODY) {
+        // this part is split in three cases which is a parameter see index.apt
+        //ATTACHMENTS_AND_BODY extracting the body and attachement from mail
+        //BODY extracting only the body
+
+        if (entry.getExtractType() == EWSPollTableEntry.ExtractType.ATTACHMENTS_AND_BODY) {
             inputStream = client.getBodyAsInputStream(message);
             contentType = client.getBodyContentType(message);
+            client.loadAttachments(entry.getAttachmentFolder(), message);
+        } else if (entry.getExtractType() == EWSPollTableEntry.ExtractType.BODY) {
+            inputStream = client.getBodyAsInputStream(message);
+            contentType = client.getBodyContentType(message);
+        } else if (entry.getExtractType() == EWSPollTableEntry.ExtractType.ATTACHMENTS) {
         } else {
-            // Untested code!!!
-
-            FileAttachment fa = null;
-            if (message.getHasAttachments()) {
-                if (log.isTraceEnabled()) {
-                    log.trace("The mail has attachments");
-                }
-
-                // We must have an attachment
-                // FIXME: Check against regex whether this is interesting
-                AttachmentCollection attachments = message.getAttachments();
-
-                inputStream = new PipedInputStream();
-                PipedOutputStream pop = new PipedOutputStream((PipedInputStream) inputStream);
-
-                for (Attachment attachment : attachments) {
-                    // LOG the attachment info
-
-                    if (attachment instanceof FileAttachment) {
-                        fa = (FileAttachment) attachment;
-
-                        try {
-                            // Only load the FileAttachment when its present
-                            if (fa != null) {
-                                fa.load(pop);
-                            }
-                        } catch (IOException ioe) {
-                            throw new RuntimeException("An error occurred loading the file attachment for message : " + message.getId());
-                        }
-
-                        contentType = fa.getContentType();
-
-                        if (log.isTraceEnabled()) {
-                            log.trace("Going to create a SOAP Envelope...");
-                        }
-
-                        //Step out of this for loop
-                        break;
-                    } else {
-                        if (log.isInfoEnabled()) {
-                            log.info("An attachment of an unknown type has been discovered (type found is : " + attachment.getClass().getName() + ")");
-                        }
-                        // LOG strange attachment and throw away of move....
-                    }
-                }
-            }
+            client.loadAttachments(entry.getAttachmentFolder(), message);
         }
 
         if (log.isTraceEnabled()) {
@@ -493,7 +458,7 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
             }
 
 
-            outInfo.setTargetAddresses((InternetAddress[]) iaList.toArray());
+            outInfo.setTargetAddresses(iaList.toArray(new InternetAddress[iaList.size()]));
 
         } else if (message.getFrom() != null) {
             outInfo.setTargetAddresses(new InternetAddress[]{new InternetAddress(message.getFrom().getAddress())});
