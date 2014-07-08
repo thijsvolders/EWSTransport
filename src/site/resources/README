@@ -1,0 +1,11 @@
+#
+# The EWSTransport depends on the Microsoft Exchange Webservices API.
+# This is shipped with this transport for convenience. 
+#
+# To install the Exchange Webservices API jar in your local repository execute the following command
+mvn install:install-file -Dfile=exchange-ws-api-1.2.0.jar -DgroupId=com.microsoft.ewsjavaapi \
+    -DartifactId=exchange-ws-api -Dversion=1.2.0 -Dpackaging=jar
+
+
+# The alternative is to download the sources of the above Exchange wesbervices API from my github account. The microsoft sources have been altered to suit my jcifs version needs.
+# The location is https://github.com/thijsvolders/EWS_Java_API
