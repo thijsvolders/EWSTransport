@@ -19,18 +19,9 @@
 
 package nl.yenlo.transport.msews;
 
-import microsoft.exchange.webservices.data.Attachment;
-import microsoft.exchange.webservices.data.AttachmentCollection;
-import microsoft.exchange.webservices.data.EmailAddress;
-import microsoft.exchange.webservices.data.EmailAddressCollection;
-import microsoft.exchange.webservices.data.EmailMessage;
-import microsoft.exchange.webservices.data.EmailMessageSchema;
-import microsoft.exchange.webservices.data.FileAttachment;
-import microsoft.exchange.webservices.data.InternetMessageHeader;
-import microsoft.exchange.webservices.data.InternetMessageHeaderCollection;
-import microsoft.exchange.webservices.data.SearchFilter;
-import microsoft.exchange.webservices.data.ServiceLocalException;
+import microsoft.exchange.webservices.data.*;
 import nl.yenlo.transport.msews.client.EwsMailClient;
+import org.apache.axiom.soap.SOAPEnvelope;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.Constants;
 import org.apache.axis2.addressing.EndpointReference;
@@ -50,15 +41,7 @@ import javax.mail.internet.InternetAddress;
 import javax.xml.stream.XMLStreamException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -387,7 +370,14 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
         // When there are no attachments then set the message body as XML content.
         try {
             try {
-                msgContext.setEnvelope(TransportUtils.createSOAPMessage(msgContext, inputStream, contentType));
+                SOAPEnvelope soapMessage = TransportUtils.createSOAPMessage(msgContext, inputStream, contentType);
+
+                //Log the soapMesage
+                if (log.isDebugEnabled()) {
+                    log.debug("About to send soapMessage : " + soapMessage.toString());
+                }
+
+                msgContext.setEnvelope(soapMessage);
             } catch (XMLStreamException ex) {
                 handleException("Error parsing message", ex);
             }

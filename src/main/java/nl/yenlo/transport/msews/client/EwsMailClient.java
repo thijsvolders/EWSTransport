@@ -330,6 +330,10 @@ public class EwsMailClient {
                 throw new RuntimeException("HTML bodytypes are not supported!!");
             }
 
+            if (log.isDebugEnabled()) {
+                // Log the message body...
+                log.debug("Email Message received: " + message.getBody().toString());
+            }
             // Get the body text and put that into the InputStream
             return new ByteArrayInputStream(message.getBody().toString().getBytes());
         } catch (ServiceLocalException sle) {
