@@ -86,7 +86,6 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
     protected void poll(EWSPollTableEntry entry) {
         try {
             checkMail(entry, entry.getEmailAddress());
-            resume();
         } catch (Exception e) {
             // A catch all construction where we can log any exception which was uncaughtin the checkMail method
             processFailure("An unexpected error occurred while polling the EWS-mail server", e, entry);
@@ -301,7 +300,6 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
             if (log.isDebugEnabled()) {
                 log.debug("Scheduling next poll for : " + emailAddress);
             }
-            onPollCompletion(entry);
         }
     }
 
