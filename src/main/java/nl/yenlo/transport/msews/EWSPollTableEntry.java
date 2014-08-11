@@ -286,13 +286,8 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
             String transportFolderNameValue = ParamUtils.getOptionalParam(paramIncl, EWSTransportConstants.MAIL_EWS_FOLDER);
             try {
                 if (transportFolderNameValue != null) {
-                    // Test if the supplied transportFolderName is a WellknownFolderName, use it if so..
-                    try {
-                        folder = new FolderId(WellKnownFolderName.valueOf(transportFolderNameValue));
-                    } catch (EnumConstantNotPresentException ecnpe) {
-                        // OK, no known name.. FolderId must be UniqueId
-                        folder = new FolderId(transportFolderNameValue);
-                    }
+                    folder = getFolderId(transportFolderNameValue);
+
                 }
             } catch (Exception e) {
                 throw new EwsMailClientConfigException("The " + EWSTransportConstants.MAIL_EWS_FOLDER + " parameters is either not found or null", e);
@@ -371,6 +366,31 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
 
         }
         return super.loadConfiguration(paramIncl);
+    }
+
+    /**
+     * Get the folder id based on the transport foldername
+     *
+     * @param transportFolderNameValue the name of the folder (can be WellKnown or arbitrary)
+     * @return a FolderId is found, otherwise an exception will be thrown.
+     * @throws Exception whenever the folder could not be found by its wellKnown name or its arbitrary name.
+     */
+    private FolderId getFolderId(String transportFolderNameValue) throws Exception {
+        FolderId result = null;
+        // Test if the supplied transportFolderName is a WellknownFolderName, use it if so..
+        try {
+            result = new FolderId(WellKnownFolderName.valueOf(transportFolderNameValue));
+        } catch (EnumConstantNotPresentException ecnpe) {
+            // OK, no known name.. FolderId must be UniqueId
+        }catch (IllegalArgumentException iae) {
+            // hmm, enum does not exist. Lets use fallback to the other ID...
+        }
+
+        if (result == null) {
+            result = new FolderId(transportFolderNameValue);
+        }
+
+        return result;
     }
 
 
