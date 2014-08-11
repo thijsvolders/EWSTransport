@@ -301,7 +301,6 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
             if (log.isDebugEnabled()) {
                 log.debug("Scheduling next poll for : " + emailAddress);
             }
-            onPollCompletion(entry);
         }
     }
 
