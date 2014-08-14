@@ -499,10 +499,10 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
                 }
 
                 if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MOVE) {
-                    log.error("ActionAfterProcess MOVE is currently not supported !!! Message will not be touched in mailbox");
+                    log.debug("ActionAfterProcess MOVE. Moving message to " + moveToFolder);
                     client.moveMessage(message, moveToFolder);
                 } else if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.DELETE) {
-                    log.error("ActionAfterProcess DELETE is currently not supported !!! Message will not be touched in mailbox!");
+                    log.debug("ActionAfterProcess DELETE. Deleting message using the delete action type " + entry.getDeleteActionType().toString());
                     client.deleteMessage(message, entry.getDeleteActionType());
                 } else if (entry.getActionAfterProcess() == EWSPollTableEntry.ActionType.MARKASREAD) {
                     log.debug("ActionAfterProcess MARKASREAD. Marking message as read.");
@@ -516,10 +516,10 @@ public class EWSMailTransportListener extends AbstractPollingTransportListener<E
                 }
 
                 if (entry.getActionAfterFailure() == EWSPollTableEntry.ActionType.MOVE) {
-                    log.error("ActionAfterProcess MOVE is currently not supported !!! Message will not be touched in mailbox");
+                    log.debug("ActionAfterProcess MOVE. Moving message to " + moveToFolder);
                     client.moveMessage(message, moveToFolder);
                 } else if (entry.getActionAfterFailure() == EWSPollTableEntry.ActionType.DELETE) {
-                    log.error("ActionAfterProcess DELETE is currently not supported !!! Message will not be touched in mailbox!");
+                    log.debug("ActionAfterProcess DELETE. Deleting message using the delete action type " + entry.getDeleteActionType().toString());
                     client.deleteMessage(message, entry.getDeleteActionType());
                 } else if (entry.getActionAfterFailure() == EWSPollTableEntry.ActionType.MARKASREAD) {
                     log.debug("ActionAfterProcess MARKASREAD. Marking message as read.");
