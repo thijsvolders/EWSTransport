@@ -135,7 +135,7 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
     /**
      * The mail folder from which to check mail
      */
-    private FolderId folder = new FolderId(WellKnownFolderName.Inbox);
+    private String folder = WellKnownFolderName.Inbox.toString();
 
     /**
      * default reply address
@@ -375,22 +375,9 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
      * @return a FolderId is found, otherwise an exception will be thrown.
      * @throws Exception whenever the folder could not be found by its wellKnown name or its arbitrary name.
      */
-    private FolderId getFolderId(String transportFolderNameValue) throws Exception {
-        FolderId result = null;
-        // Test if the supplied transportFolderName is a WellknownFolderName, use it if so..
-        try {
-            result = new FolderId(WellKnownFolderName.valueOf(transportFolderNameValue));
-        } catch (EnumConstantNotPresentException ecnpe) {
-            // OK, no known name.. FolderId must be UniqueId
-        }catch (IllegalArgumentException iae) {
-            // hmm, enum does not exist. Lets use fallback to the other ID...
-        }
-
-        if (result == null) {
-            result = new FolderId(transportFolderNameValue);
-        }
-
-        return result;
+    private String getFolderId(String transportFolderNameValue) throws Exception {
+        this.folder = transportFolderNameValue;
+        return folder;
     }
 
 
@@ -430,7 +417,7 @@ public class EWSPollTableEntry extends AbstractPollTableEntry {
         return messageCount;
     }
 
-    public FolderId getFolder() {
+    public String getFolder() {
         return folder;
     }
 

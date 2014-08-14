@@ -50,7 +50,7 @@ public class EwsMailClientTest {
         String serviceUrl = System.getProperty(SU_SYSTEM_PROP);
         client.withLogin(un, pw, DOMAIN).withServiceURL(serviceUrl);
 
-        client.forFolder(new FolderId(WellKnownFolderName.Inbox));
+        client.forFolder(new FolderId(WellKnownFolderName.Inbox).toString());
         SearchFilter.SearchFilterCollection sf = new SearchFilter.SearchFilterCollection(LogicalOperator.And,
                 new SearchFilter.ContainsSubstring(EmailMessageSchema.Sender, "@" + domain), new SearchFilter.IsEqualTo(EmailMessageSchema.IsRead, false) /*,
                 new SearchFilter.ContainsSubstring(EmailMessageSchema.Subject, "Test")*/);

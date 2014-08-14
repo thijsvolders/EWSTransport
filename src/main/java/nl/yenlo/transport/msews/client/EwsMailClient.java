@@ -10,8 +10,7 @@ import org.apache.commons.logging.Log;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.EnumSet;
-import java.util.Iterator;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.FileHandler;
@@ -42,6 +41,8 @@ public class EwsMailClient {
 
     private int batchSize = 10;
     private FindItemsResults<Item> items = null;
+
+    private Map<String,FolderId> knownFolders = new HashMap<String, FolderId>();
 
     /**
      * A simple Runnable which write the fileAtachment to disk.
@@ -200,8 +201,49 @@ public class EwsMailClient {
      * @param folder a WellKnownFolderName
      * @return the mailClient instance.
      */
-    public EwsMailClient forFolder(FolderId folder) {
-        this.folder = folder;
+    public EwsMailClient forFolder(String folder) {
+
+        try {
+            // Lets search for the folder
+            // Create a view with a page size of 10.
+            FolderView view = new FolderView(50);
+
+// Identify the properties to return in the results set.
+            PropertySet ps = new PropertySet(BasePropertySet.IdOnly);
+            ps.add(FolderSchema.DisplayName);
+
+// Unlike FindItem searches, folder searches can be deep traversals.
+            view.setTraversal(FolderTraversal.Deep);
+
+// Send the request to search the mailbox and get the results.
+            FindFoldersResults findFolderResults = service.findFolders(WellKnownFolderName.Root, view);
+
+// Process each item.
+            for (Folder findFolderResult : findFolderResults) {
+                String displayName = findFolderResult.getDisplayName();
+                FolderId id = findFolderResult.getId();
+
+                // Add the displayName to the knownFolders
+                knownFolders.put(displayName, id);
+
+                if (log.isDebugEnabled()) {
+                    log.debug("Found folder with displayName " + displayName + " and id " + (id != null ? id.toString() : "null"));
+                }
+
+                if (folder.equalsIgnoreCase(displayName) ||
+                        (id != null && folder.equalsIgnoreCase(id.toString()))) {
+                    // Found it...
+                    this.folder = id;
+                }
+            }
+
+        } catch (Exception e) {
+            throw new EwsMailClientCommunicationException("Could not find the folders for the supplied mailbox", e);
+        }
+
+        if (this.folder == null) {
+            throw new EwsMailClientConfigException("Could not find the supplied " + folder + " in the specified mailbox", null);
+        }
         return this;
     }
 
@@ -375,9 +417,9 @@ public class EwsMailClient {
      */
     public void moveMessage(EmailMessage message, String toFolder) {
         try {
-            Folder folder = getFolderByName(toFolder);
+            FolderId moveToFolder = getFolderIdByName(toFolder);
             // We will move the message.
-            message.move(folder.getId());
+            message.move(moveToFolder);
         } catch (Exception e) {
             throw new EwsMailClientCommunicationException("A communication exception occurred while moving the email message", e);
         }
@@ -393,24 +435,14 @@ public class EwsMailClient {
      * @return the Folder instance if it exists
      * @throws Exception whenever the folder could not be found by its name
      */
-    private Folder getFolderByName(String folderName) throws Exception {
-        Folder targetFolder = null;
+    private FolderId getFolderIdByName(String folderName) throws Exception {
+        // Find the folder from KnownFolders...
+        FolderId targetFolderId = knownFolders.get(folderName);
 
-        Folder rootfolder = Folder.bind(service, WellKnownFolderName.MsgFolderRoot);
-        rootfolder.load();
-        for (Folder folder : rootfolder.findFolders(new FolderView(100))) {
-            // Finds the emails in a certain folder, in this case the Junk Email
-            // This IF limits what folder the program will seek
-            if (folderName.equals(folder.getDisplayName())) {
-                targetFolder = folder;
-                break;
-            }
-        }
-
-        if (targetFolder == null) {
+        if (targetFolderId == null) {
             throw new RuntimeException("Unable to find folder (" + folderName + ") in specified mailaccount.");
         }
-        return targetFolder;
+        return targetFolderId;
     }
 
     public void markAsRead(EmailMessage message) {
@@ -431,7 +463,6 @@ public class EwsMailClient {
      *
      * @param attachmentFolderName
      * @param message
-     * @param contentType
      * @return
      * @throws ServiceLocalException
      * @throws Exception
